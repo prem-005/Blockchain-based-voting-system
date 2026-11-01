@@ -1,0 +1,1 @@
+# LightVote Django Core
