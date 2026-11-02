@@ -24,7 +24,7 @@ export const LoginPage: React.FC = () => {
       });
 
       if (data.requires_otp) {
-        navigate(`/verify-otp?email=${encodeURIComponent(email.trim().toLowerCase())}&purpose=LOGIN`);
+        navigate(`/verify-otp?email=${encodeURIComponent(email.trim().toLowerCase())}&purpose=LOGIN${data.otp_hint ? `&hint=${encodeURIComponent(data.otp_hint)}` : ''}`);
       } else if (data.user) {
         setUserState(data.user);
         if (data.user.role === 'CENTRAL_ADMIN') {

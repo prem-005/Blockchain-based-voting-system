@@ -42,6 +42,7 @@ export const RegisterPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [ageWarning, setAgeWarning] = useState<string | null>(null);
   const [registeredEpic, setRegisteredEpic] = useState<string | null>(null);
+  const [registeredOtpHint, setRegisteredOtpHint] = useState<string | null>(null);
 
   useEffect(() => {
     apiRequest('/elections/districts/')
@@ -137,6 +138,7 @@ export const RegisterPage: React.FC = () => {
       });
 
       setRegisteredEpic(res.voter_id_number || 'ENROLLED');
+      if (res.otp_hint) setRegisteredOtpHint(res.otp_hint);
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please check inputs or contact support.');
     } finally {
@@ -154,8 +156,14 @@ export const RegisterPage: React.FC = () => {
         <p className="text-xs text-[#64748B]">
           Your application has been received with reference <b className="font-mono text-[#102A56]">{registeredEpic}</b>.
         </p>
-        <div className="pt-2">
-          <Link to="/login" className="px-6 py-2.5 bg-[#2563EB] text-white text-xs font-bold rounded-lg inline-block">
+        <div className="pt-2 flex flex-col sm:flex-row gap-2 justify-center">
+          <Link
+            to={`/verify-otp?email=${encodeURIComponent(formData.email.toLowerCase())}&purpose=REGISTRATION${registeredOtpHint ? `&hint=${encodeURIComponent(registeredOtpHint)}` : ''}`}
+            className="px-6 py-2.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-bold rounded-lg inline-block"
+          >
+            Verify OTP & Sign In &rarr;
+          </Link>
+          <Link to="/login" className="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg inline-block">
             Proceed to Login
           </Link>
         </div>
