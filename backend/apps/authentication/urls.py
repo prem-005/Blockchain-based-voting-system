@@ -1,8 +1,9 @@
 from django.urls import path
-from .views import AdminAccountDetailView, AdminAccountListCreateView, CsrfCookieView, SendOTPView, VerifyOTPView, LoginView, LogoutView, MeView
+from .views import AdminAccountDetailView, AdminAccountListCreateView, CsrfCookieView, SendOTPView, VerifyOTPView, LoginView, LogoutView, MeView, TestEmailView
 
 urlpatterns = [
     path('csrf/', CsrfCookieView.as_view(), name='csrf-cookie'),
+    path('test-email/', TestEmailView.as_view(), name='test-email'),
     path('send-otp/', SendOTPView.as_view(), name='send-otp'),
     path('verify-otp/', VerifyOTPView.as_view(), name='verify-otp'),
     path('login/', LoginView.as_view(), name='login'),
