@@ -45,15 +45,21 @@ export const RegisterPage: React.FC = () => {
 
   useEffect(() => {
     apiRequest('/elections/districts/')
-      .then((data) => setDistricts(data.results || data || []))
-      .catch((err) => console.error(err));
+      .then((data) => {
+        const list = Array.isArray(data) ? data : (data?.results || []);
+        setDistricts(list);
+      })
+      .catch((err) => console.error("Could not fetch districts:", err));
   }, []);
 
   useEffect(() => {
     if (formData.district) {
       apiRequest(`/elections/constituencies/?district_id=${formData.district}`)
-        .then((data) => setConstituencies(data.results || data || []))
-        .catch((err) => console.error(err));
+        .then((data) => {
+          const list = Array.isArray(data) ? data : (data?.results || []);
+          setConstituencies(list);
+        })
+        .catch((err) => console.error("Could not fetch constituencies:", err));
     } else {
       setConstituencies([]);
     }

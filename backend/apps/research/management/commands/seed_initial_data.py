@@ -1,4 +1,5 @@
 from datetime import timedelta
+from django.core.management import call_command
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from apps.authentication.models import User
@@ -10,6 +11,12 @@ class Command(BaseCommand):
     help = "Seeds initial Central Admin, sample Parties, 2026/2027 Elections, and Research Benchmarks"
 
     def handle(self, *args, **kwargs):
+        self.stdout.write("Loading Tamil Nadu administrative dataset (districts & constituencies)...")
+        try:
+            call_command("load_tamil_nadu_data")
+        except Exception as e:
+            self.stdout.write(self.style.WARNING(f"load_tamil_nadu_data warning: {e}"))
+
         self.stdout.write("Seeding LightVote initial database records...")
 
         # 1. Central Admin

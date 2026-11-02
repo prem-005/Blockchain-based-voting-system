@@ -1,7 +1,7 @@
 from django.utils import timezone
 from django.conf import settings
 from django.core.mail import send_mail
-from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 import logging
 from rest_framework import generics, status
@@ -28,7 +28,7 @@ from .eligibility import derive_nullifier, build_merkle_tree
 
 logger = logging.getLogger(__name__)
 
-@method_decorator(csrf_protect, name='dispatch')
+@method_decorator(csrf_exempt, name='dispatch')
 class VoterRegistrationView(generics.CreateAPIView):
     permission_classes = [AllowAny]
     serializer_class = VoterRegistrationSerializer

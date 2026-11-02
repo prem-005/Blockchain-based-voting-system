@@ -17,20 +17,23 @@ from apps.receipts.models import VoteReceipt
 
 class StateListView(generics.ListAPIView):
     permission_classes = [AllowAny]
-    queryset = State.objects.all()
+    pagination_class = None
+    queryset = State.objects.all().order_by('name')
     serializer_class = StateSerializer
 
 class DistrictListView(generics.ListAPIView):
     permission_classes = [AllowAny]
-    queryset = District.objects.all()
+    pagination_class = None
+    queryset = District.objects.all().order_by('name')
     serializer_class = DistrictSerializer
 
 class ConstituencyListView(generics.ListAPIView):
     permission_classes = [AllowAny]
+    pagination_class = None
     serializer_class = ConstituencySerializer
 
     def get_queryset(self):
-        queryset = Constituency.objects.select_related('district').all()
+        queryset = Constituency.objects.select_related('district').all().order_by('name')
         district_id = self.request.query_params.get('district_id')
         if district_id:
             queryset = queryset.filter(district_id=district_id)

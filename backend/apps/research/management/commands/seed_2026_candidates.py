@@ -44,4 +44,25 @@ class Command(BaseCommand):
             )
             self.stdout.write(f"Added {name} ({abbreviation}) as on-chain candidate #{candidate_id}.")
 
+        election2027 = Election.objects.filter(pk=202701).first()
+        if election2027:
+            for name, abbreviation, candidate_id, candidate_ref in candidates:
+                party = Party.objects.filter(abbreviation=abbreviation).first()
+                if party:
+                    ref2027 = candidate_ref[:-4] + "2027"
+                    Candidate.objects.update_or_create(
+                        election=election2027,
+                        constituency=constituency,
+                        name=name,
+                        defaults={
+                            "candidate_id": candidate_id,
+                            "candidate_ref": ref2027,
+                            "party": party,
+                            "district": district,
+                            "affidavit_summary": f"Official affidavit for AC-141 ({abbreviation}) 2027.",
+                            "is_active": True,
+                        },
+                    )
+            self.stdout.write(self.style.SUCCESS("2027 candidate roster is also ready."))
+
         self.stdout.write(self.style.SUCCESS("2026 candidate roster is ready."))
