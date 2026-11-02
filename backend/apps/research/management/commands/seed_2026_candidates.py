@@ -1,4 +1,4 @@
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
 
 from apps.elections.models import Constituency, District, Election
 from apps.parties_candidates.models import Candidate, Party
@@ -12,7 +12,10 @@ class Command(BaseCommand):
         district = District.objects.filter(pk=29).first()
         constituency = Constituency.objects.filter(pk=141).first()
         if not election or not district or not constituency:
-            raise CommandError("Seed election 202601, district 29, and constituency 141 first.")
+            self.stdout.write(self.style.WARNING(
+                "Missing prerequisite data (election 202601 / district 29 / constituency 141) — skipping candidate seed."
+            ))
+            return
 
         candidates = [
             ("S. Kathiravan", "DMK", 1, "0x1010101010101010101010101010101010101010101010101010101010101010"),
@@ -24,7 +27,8 @@ class Command(BaseCommand):
         for name, abbreviation, candidate_id, candidate_ref in candidates:
             party = Party.objects.filter(abbreviation=abbreviation).first()
             if not party:
-                raise CommandError(f"Party {abbreviation} is missing. Run seed_initial_data first.")
+                self.stdout.write(self.style.WARNING(f"Party {abbreviation} is missing — skipping candidate seed."))
+                return
             Candidate.objects.update_or_create(
                 election=election,
                 constituency=constituency,
