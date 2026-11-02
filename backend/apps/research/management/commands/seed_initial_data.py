@@ -81,7 +81,7 @@ class Command(BaseCommand):
 
         # 5. Elections (2026 and 2027)
         now = timezone.now()
-        # 2026 Election (Active)
+        # 2026 Election (Upcoming by default - starts only when Admin clicks Start Voting)
         elec_2026, _ = Election.objects.update_or_create(
             id=202601,
             defaults={
@@ -89,9 +89,9 @@ class Command(BaseCommand):
                 "year": 2026,
                 "scope": Election.Scope.STATE_ASSEMBLY,
                 "state": state,
-                "start_time": now - timedelta(hours=2),
-                "end_time": now + timedelta(days=7),
-                "status": Election.Status.ACTIVE
+                "start_time": now + timedelta(days=30),
+                "end_time": now + timedelta(days=37),
+                "status": Election.Status.UPCOMING
             }
         )
 

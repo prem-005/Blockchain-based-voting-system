@@ -65,8 +65,8 @@ async function main() {
   // 6. Seed Initial 2026 & 2027 Election & Candidates on-chain
   console.log("\n[6/6] Seeding 2026 and 2027 Elections & Candidates on-chain...");
   const now = Math.floor(Date.now() / 1000);
-  const startTime = now - 3600; // Started 1 hour ago
-  const endTime = now + 86400 * 30; // Ends in 30 days
+  const startTime = now + 86400 * 30; // Upcoming: starts in 30 days
+  const endTime = now + 86400 * 37; // Ends in 37 days
 
   // Election 202601
   const createTx2026 = await electionManager.createElection(
