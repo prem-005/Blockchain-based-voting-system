@@ -44,6 +44,14 @@ class Candidate(models.Model):
                 raise ValidationError({
                     'constituency': f"Constituency '{self.constituency.name}' does not belong to District '{self.district.name}'."
                 })
+        if getattr(self, 'election_id', None) and getattr(self, 'constituency_id', None) and getattr(self, 'party_id', None) and self.is_active:
+            qs = Candidate.objects.filter(election_id=self.election_id, constituency_id=self.constituency_id, party_id=self.party_id, is_active=True)
+            if self.pk:
+                qs = qs.exclude(pk=self.pk)
+            if qs.exists():
+                raise ValidationError({
+                    'party': f"Party already has an active candidate in this constituency for this election."
+                })
 
     def save(self, *args, **kwargs):
         self.clean()

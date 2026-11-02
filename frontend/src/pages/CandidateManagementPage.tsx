@@ -193,6 +193,28 @@ export const CandidateManagementPage: React.FC = () => {
         if (!lightVote) throw new Error('LightVote contract is unavailable for the connected network.');
         const partyObj = parties.find(p => p.id.toString() === formData.party);
         if (!partyObj) throw new Error('Select a valid registered party.');
+
+        // Enforce that each party can nominate at most ONE candidate per constituency per election
+        const duplicatePartyCandidate = candidates.find(c => 
+          Number(c.election) === Number(formData.election) &&
+          Number(c.constituency) === Number(formData.constituency) &&
+          (Number(c.party) === Number(formData.party) || Number(c.party_details?.id) === Number(formData.party)) &&
+          c.is_active
+        );
+        if (duplicatePartyCandidate) {
+          throw new Error(`The party '${partyObj.name} (${partyObj.abbreviation})' already has a nominated candidate (${duplicatePartyCandidate.name}) in this constituency.`);
+        }
+
+        // Enforce unique candidate name in this constituency
+        const duplicateNameCandidate = candidates.find(c =>
+          Number(c.election) === Number(formData.election) &&
+          Number(c.constituency) === Number(formData.constituency) &&
+          c.name.trim().toLowerCase() === formData.name.trim().toLowerCase()
+        );
+        if (duplicateNameCandidate) {
+          throw new Error(`A candidate named '${formData.name}' is already registered in this constituency.`);
+        }
+
         const tx = await lightVote.registerCandidate(
           BigInt(formData.election),
           BigInt(formData.district),
@@ -610,10 +632,31 @@ export const CandidateManagementPage: React.FC = () => {
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500"
                 >
                   <option value="">-- Select Party --</option>
-                  {parties.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name} ({p.abbreviation})</option>
-                  ))}
+                  {parties.map((p) => {
+                    const isNominated = modalMode === 'add' && Boolean(formData.constituency) && candidates.some(c =>
+                      Number(c.election) === Number(formData.election) &&
+                      Number(c.constituency) === Number(formData.constituency) &&
+                      (Number(c.party) === p.id || Number(c.party_details?.id) === p.id) &&
+                      c.is_active
+                    );
+                    return (
+                      <option key={p.id} value={p.id} disabled={isNominated}>
+                        {p.name} ({p.abbreviation}) {isNominated ? '— [Already Nominated in this Constituency]' : ''}
+                      </option>
+                    );
+                  })}
                 </select>
+                {modalMode === 'add' && Boolean(formData.party) && Boolean(formData.constituency) && candidates.some(c =>
+                  Number(c.election) === Number(formData.election) &&
+                  Number(c.constituency) === Number(formData.constituency) &&
+                  (Number(c.party) === Number(formData.party) || Number(c.party_details?.id) === Number(formData.party)) &&
+                  c.is_active
+                ) && (
+                  <p className="mt-1.5 text-xs text-rose-600 font-semibold flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    This party already has an active nominee in this constituency for this election. Choose another party or constituency.
+                  </p>
+                )}
               </div>
 
               {/* District + Constituency (only editable on ADD) */}

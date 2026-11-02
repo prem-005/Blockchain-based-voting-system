@@ -45,6 +45,37 @@ class CandidateSerializer(serializers.ModelSerializer):
             district = attrs.get('district')
             constituency = attrs.get('constituency')
             party = attrs.get('party')
+
+            # Ensure each party has at most one official candidate per constituency
+            if party and election and constituency:
+                existing_nominee = Candidate.objects.filter(
+                    election=election,
+                    constituency=constituency,
+                    party=party,
+                    is_active=True
+                )
+                if self.instance:
+                    existing_nominee = existing_nominee.exclude(pk=self.instance.pk)
+                if existing_nominee.exists():
+                    raise serializers.ValidationError({
+                        'party': f"{party.name} ({party.abbreviation}) already has an active nominee ({existing_nominee.first().name}) in this constituency for this election."
+                    })
+
+            # Ensure unique candidate name in constituency
+            cand_name = (attrs.get('name') or '').strip()
+            if cand_name and election and constituency:
+                existing_cand = Candidate.objects.filter(
+                    election=election,
+                    constituency=constituency,
+                    name__iexact=cand_name
+                )
+                if self.instance:
+                    existing_cand = existing_cand.exclude(pk=self.instance.pk)
+                if existing_cand.exists():
+                    raise serializers.ValidationError({
+                        'name': f"A candidate named '{cand_name}' is already registered in this constituency."
+                    })
+
             if not election or chain_data['election_id'] != election.pk:
                 raise serializers.ValidationError({'election': 'Election does not match the confirmed chain registration.'})
             if not district or chain_data['district_id'] != district.pk:
