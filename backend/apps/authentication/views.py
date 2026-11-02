@@ -213,50 +213,37 @@ class TestEmailView(APIView):
         to_email = request.query_params.get('email', '').strip()
         if not to_email:
             return Response({'error': 'Please provide an email address in the query parameters (e.g. ?email=voter@example.com)'}, status=status.HTTP_400_BAD_REQUEST)
+
+        brevo_key = os.getenv('BREVO_API_KEY', '').strip()
         resend_key = os.getenv('RESEND_API_KEY', '').strip()
 
+        provider = 'Brevo' if brevo_key else ('Resend' if resend_key else 'Django Default')
+
         status_info = {
+            'active_provider': provider,
+            'brevo_key_configured': bool(brevo_key),
+            'brevo_key_prefix': (brevo_key[:8] + '...') if brevo_key else None,
             'resend_key_configured': bool(resend_key),
-            'resend_key_prefix': (resend_key[:6] + '...') if resend_key else None,
             'target_email': to_email,
         }
 
-        if not resend_key:
-            status_info['error'] = 'RESEND_API_KEY is not set in Render environment variables.'
-            return Response(status_info, status=status.HTTP_400_BAD_REQUEST)
+        if not brevo_key and not resend_key:
+            status_info['warning'] = 'Neither BREVO_API_KEY nor RESEND_API_KEY is configured. Falling back to Django default mail.'
 
+        from .email_service import send_email_direct
         try:
-            import requests
-            from_email = os.getenv('RESEND_FROM', 'LightVote <onboarding@resend.dev>')
-            response = requests.post(
-                'https://api.resend.com/emails',
-                headers={
-                    'Authorization': f'Bearer {resend_key}',
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'LightVote-Elections/1.0',
-                },
-                json={
-                    'from': from_email,
-                    'to': [to_email],
-                    'subject': 'LightVote Test Verification Code: 582914',
-                    'text': 'This is a live test from LightVote. Your code is: 582914',
-                    'html': '<div style="font-family:Arial,sans-serif;padding:24px;border:1px solid #e2e8f0;border-radius:12px;max-width:500px;"><h2 style="color:#102a56;">LightVote Test Email</h2><p>Your test verification code is: <b style="font-size:24px;color:#2563eb;letter-spacing:4px;">582914</b></p><p style="color:#64748b;font-size:12px;">Valid for 5 minutes.</p></div>',
-                },
-                timeout=10,
+            success = send_email_direct(
+                to_email=to_email,
+                subject='LightVote Test OTP: 849201',
+                message='This is a live test from LightVote. Your test OTP is: 849201. If you received this, your email integration is working perfectly!'
             )
-            status_info['resend_http_status'] = response.status_code
-            try:
-                status_info['resend_response'] = response.json()
-            except Exception:
-                status_info['resend_response'] = response.text
-
-            if response.status_code in (200, 201):
-                status_info['success'] = True
-                status_info['message'] = f'Email sent successfully to {to_email}! Check your inbox and spam folder.'
+            status_info['success'] = success
+            if success:
+                status_info['message'] = f'Email dispatched successfully via {provider} to {to_email}! Check your inbox and spam folder.'
                 return Response(status_info, status=status.HTTP_200_OK)
             else:
-                status_info['success'] = False
-                return Response(status_info, status=status.HTTP_400_BAD_REQUEST)
+                status_info['message'] = f'Email dispatch via {provider} failed. Check server logs for details.'
+                return Response(status_info, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             status_info['exception'] = str(e)
             return Response(status_info, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
