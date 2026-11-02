@@ -16,6 +16,7 @@ from apps.elections.models import District
 from .permissions import IsCentralAdministrator
 
 from .models import User, OTPToken
+from .email_service import send_email_async
 from .serializers import AdminAccountCreateSerializer, AdminAccountSerializer, UserSerializer, SendOTPSerializer, VerifyOTPSerializer, LoginSerializer
 
 logger = logging.getLogger(__name__)
@@ -55,7 +56,6 @@ class SendOTPView(APIView):
 
         token = OTPToken.generate_otp(user=user, purpose=purpose, validity_minutes=5)
 
-        # Dispatch email in background thread to avoid blocking the HTTP request
         subject = f"LightVote Verification Code: {token.otp_code}"
         message = (
             f"Greetings from LightVote Election Commission,\n\n"
@@ -65,21 +65,7 @@ class SendOTPView(APIView):
             f"If you did not request this verification, please ignore this email."
         )
 
-        import threading
-
-        def _send_otp_bg():
-            try:
-                send_mail(
-                    subject=subject,
-                    message=message,
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[email],
-                    fail_silently=False
-                )
-            except Exception as e:
-                logger.warning("Could not deliver OTP email (OTP=%s): %s", token.otp_code, str(e))
-
-        threading.Thread(target=_send_otp_bg, daemon=True).start()
+        send_email_async(email, subject, message)
 
         return Response({
             'message': 'Verification OTP generated successfully.',
@@ -175,22 +161,9 @@ class LoginView(APIView):
 
         # Voter passwordless OTP login pathway
         token = OTPToken.generate_otp(user=user, purpose='LOGIN', validity_minutes=5)
-        # Dispatch OTP email in background thread
-        import threading
-
-        def _send_login_otp_bg():
-            try:
-                send_mail(
-                    subject=f"LightVote Login OTP: {token.otp_code}",
-                    message=f"Your LightVote login verification code is: {token.otp_code}\nValid for 5 minutes.",
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[email],
-                    fail_silently=False
-                )
-            except Exception as e:
-                logger.warning("Could not deliver login OTP (OTP=%s): %s", token.otp_code, str(e))
-
-        threading.Thread(target=_send_login_otp_bg, daemon=True).start()
+        subject = f"LightVote Login OTP: {token.otp_code}"
+        message = f"Your LightVote login verification code is: {token.otp_code}\nValid for 5 minutes."
+        send_email_async(email, subject, message)
 
         return Response({
             'requires_otp': True,

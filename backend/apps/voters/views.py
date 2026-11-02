@@ -19,6 +19,7 @@ from .serializers import (
     BallotCredentialSerializer,
 )
 from apps.authentication.models import User, OTPToken
+from apps.authentication.email_service import send_email_async
 from apps.authentication.permissions import IsElectionAdministrator
 from apps.elections.models import Election
 from apps.parties_candidates.models import Candidate
@@ -41,21 +42,9 @@ class VoterRegistrationView(generics.CreateAPIView):
         # Generate initial OTP for email verification
         token = OTPToken.generate_otp(user=voter.user, purpose='REGISTRATION', validity_minutes=10)
 
-        import threading
-
-        def _send_otp_background(to_email, otp_code):
-            try:
-                send_mail(
-                    subject='LightVote email verification code',
-                    message=f'Your LightVote verification code is {otp_code}. It expires in 10 minutes.',
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[to_email],
-                    fail_silently=False,
-                )
-            except Exception as error:
-                logger.warning('Could not send voter registration verification email (OTP=%s): %s', otp_code, error)
-
-        threading.Thread(target=_send_otp_background, args=(voter.user.email, token.otp_code), daemon=True).start()
+        subject = 'LightVote email verification code'
+        message = f'Your LightVote verification code is {token.otp_code}. It expires in 10 minutes.'
+        send_email_async(voter.user.email, subject, message)
 
         response_data = {
             'message': 'Registration submitted successfully. Please verify your email with the OTP.',
