@@ -167,6 +167,7 @@ if EMAIL_BACKEND_TYPE == 'smtp':
     EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() in ('true', '1')
     EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
     EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+    EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', 10))
 else:
     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 

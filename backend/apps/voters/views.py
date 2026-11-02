@@ -41,18 +41,21 @@ class VoterRegistrationView(generics.CreateAPIView):
         # Generate initial OTP for email verification
         token = OTPToken.generate_otp(user=voter.user, purpose='REGISTRATION', validity_minutes=10)
 
-        email_sent = True
-        try:
-            send_mail(
-                subject='LightVote email verification code',
-                message=f'Your LightVote verification code is {token.otp_code}. It expires in 10 minutes.',
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[voter.user.email],
-                fail_silently=False,
-            )
-        except Exception as error:
-            email_sent = False
-            logger.warning('Could not send voter registration verification email (OTP=%s): %s', token.otp_code, error)
+        import threading
+
+        def _send_otp_background(to_email, otp_code):
+            try:
+                send_mail(
+                    subject='LightVote email verification code',
+                    message=f'Your LightVote verification code is {otp_code}. It expires in 10 minutes.',
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[to_email],
+                    fail_silently=False,
+                )
+            except Exception as error:
+                logger.warning('Could not send voter registration verification email (OTP=%s): %s', otp_code, error)
+
+        threading.Thread(target=_send_otp_background, args=(voter.user.email, token.otp_code), daemon=True).start()
 
         response_data = {
             'message': 'Registration submitted successfully. Please verify your email with the OTP.',
@@ -60,8 +63,6 @@ class VoterRegistrationView(generics.CreateAPIView):
             'email': voter.user.email,
             'status': voter.status,
         }
-        if not email_sent:
-            response_data['warning'] = 'Verification email could not be delivered. Please use the Resend OTP option on the verification page.'
         return Response(response_data, status=status.HTTP_201_CREATED)
 
 class MyVoterProfileView(APIView):
