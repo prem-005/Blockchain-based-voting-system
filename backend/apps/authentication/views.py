@@ -1,7 +1,7 @@
 import logging
 from datetime import timedelta
 from django.utils import timezone
-from django.views.decorators.csrf import ensure_csrf_cookie, csrf_protect
+from django.views.decorators.csrf import ensure_csrf_cookie, csrf_protect, csrf_exempt
 from django.utils.decorators import method_decorator
 from django.core.mail import send_mail
 from django.conf import settings
@@ -27,7 +27,7 @@ class CsrfCookieView(APIView):
     def get(self, request):
         return Response({'csrf_cookie_set': True})
 
-@method_decorator(csrf_protect, name='dispatch')
+@method_decorator(csrf_exempt, name='dispatch')
 class SendOTPView(APIView):
     permission_classes = [AllowAny]
 
@@ -85,7 +85,7 @@ class SendOTPView(APIView):
             'cooldown_seconds': 60
         }, status=status.HTTP_200_OK)
 
-@method_decorator(csrf_protect, name='dispatch')
+@method_decorator(csrf_exempt, name='dispatch')
 class VerifyOTPView(APIView):
     permission_classes = [AllowAny]
 
@@ -141,7 +141,7 @@ class VerifyOTPView(APIView):
             'voter_profile': voter_profile
         }, status=status.HTTP_200_OK)
 
-@method_decorator(csrf_protect, name='dispatch')
+@method_decorator(csrf_exempt, name='dispatch')
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -190,6 +190,7 @@ class LoginView(APIView):
             'message': 'OTP dispatched to email. Enter OTP to complete login.'
         })
 
+@method_decorator(csrf_exempt, name='dispatch')
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
