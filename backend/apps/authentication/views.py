@@ -70,7 +70,6 @@ class SendOTPView(APIView):
         return Response({
             'message': 'Verification OTP generated successfully.',
             'email': email,
-            'otp_hint': token.otp_code,
             'cooldown_seconds': 60
         }, status=status.HTTP_200_OK)
 
@@ -168,7 +167,6 @@ class LoginView(APIView):
         return Response({
             'requires_otp': True,
             'email': email,
-            'otp_hint': token.otp_code,
             'message': 'OTP dispatched to email. Enter OTP to complete login.'
         })
 

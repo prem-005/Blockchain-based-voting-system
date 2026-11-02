@@ -11,11 +11,9 @@ export const VerifyOtpPage: React.FC = () => {
 
   const emailParam = searchParams.get('email') || '';
   const purposeParam = searchParams.get('purpose') || 'LOGIN';
-  const hintParam = searchParams.get('hint') || '';
 
   const [email, setEmail] = useState(emailParam);
-  const [otpCode, setOtpCode] = useState(hintParam || '');
-  const [otpHint, setOtpHint] = useState<string | null>(hintParam || null);
+  const [otpCode, setOtpCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [cooldown, setCooldown] = useState(60);
@@ -77,9 +75,6 @@ export const VerifyOtpPage: React.FC = () => {
           purpose: purposeParam
         })
       });
-      if (data.otp_hint) {
-        setOtpHint(data.otp_hint);
-      }
       setCooldown(data.cooldown_seconds || 60);
       setSuccessMsg(data.message || "A new 6-digit code has been dispatched.");
     } catch (err: any) {
@@ -115,33 +110,6 @@ export const VerifyOtpPage: React.FC = () => {
           <div className="flex items-start gap-3 p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs">
             <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-600 mt-0.5" />
             <p>{successMsg}</p>
-          </div>
-        )}
-
-        {otpHint ? (
-          <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-2xl flex items-center justify-between text-xs">
-            <div>
-              <span className="text-slate-600 block text-[11px]">Verification Code:</span>
-              <span className="font-mono text-base font-extrabold text-[#102A56] tracking-wider">{otpHint}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setOtpCode(otpHint)}
-              className="px-3 py-1.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold rounded-xl text-xs transition"
-            >
-              Fill Code
-            </button>
-          </div>
-        ) : (
-          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-600 text-[11px] flex items-center justify-between">
-            <span>Fallback Verification Code: <b className="font-mono text-slate-900">123456</b></span>
-            <button
-              type="button"
-              onClick={() => setOtpCode('123456')}
-              className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-lg text-[10px] transition"
-            >
-              Use 123456
-            </button>
           </div>
         )}
 

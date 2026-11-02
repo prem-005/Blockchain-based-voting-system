@@ -42,7 +42,6 @@ export const RegisterPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [ageWarning, setAgeWarning] = useState<string | null>(null);
   const [registeredEpic, setRegisteredEpic] = useState<string | null>(null);
-  const [registeredOtpHint, setRegisteredOtpHint] = useState<string | null>(null);
 
   useEffect(() => {
     apiRequest('/elections/districts/')
@@ -138,7 +137,6 @@ export const RegisterPage: React.FC = () => {
       });
 
       setRegisteredEpic(res.voter_id_number || 'ENROLLED');
-      if (res.otp_hint) setRegisteredOtpHint(res.otp_hint);
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please check inputs or contact support.');
     } finally {
@@ -158,7 +156,7 @@ export const RegisterPage: React.FC = () => {
         </p>
         <div className="pt-2 flex flex-col sm:flex-row gap-2 justify-center">
           <Link
-            to={`/verify-otp?email=${encodeURIComponent(formData.email.toLowerCase())}&purpose=REGISTRATION${registeredOtpHint ? `&hint=${encodeURIComponent(registeredOtpHint)}` : ''}`}
+            to={`/verify-otp?email=${encodeURIComponent(formData.email.toLowerCase())}&purpose=REGISTRATION`}
             className="px-6 py-2.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-bold rounded-lg inline-block"
           >
             Verify OTP & Sign In &rarr;

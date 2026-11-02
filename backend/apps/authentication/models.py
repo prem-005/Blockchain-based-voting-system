@@ -97,8 +97,7 @@ class OTPToken(models.Model):
         self.attempts += 1
         self.save(update_fields=['attempts'])
 
-        # Accept the exact generated code OR the universal fallback testing code '123456'
-        if self.otp_code == code.strip() or code.strip() == '123456':
+        if self.otp_code == code.strip():
             self.is_used = True
             self.save(update_fields=['is_used'])
             return True, "Verification successful."

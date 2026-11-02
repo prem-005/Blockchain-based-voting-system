@@ -51,7 +51,6 @@ class VoterRegistrationView(generics.CreateAPIView):
             'voter_id': voter.voter_id_number,
             'email': voter.user.email,
             'status': voter.status,
-            'otp_hint': token.otp_code,
         }
         return Response(response_data, status=status.HTTP_201_CREATED)
 
