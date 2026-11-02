@@ -212,7 +212,9 @@ class TestEmailView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        to_email = request.query_params.get('email', 'premkumar852006@gmail.com').strip()
+        to_email = request.query_params.get('email', '').strip()
+        if not to_email:
+            return Response({'error': 'Please provide an email address in the query parameters (e.g. ?email=voter@example.com)'}, status=status.HTTP_400_BAD_REQUEST)
         resend_key = os.getenv('RESEND_API_KEY', '').strip()
 
         status_info = {
