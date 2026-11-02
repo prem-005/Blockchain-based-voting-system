@@ -18,24 +18,62 @@ def send_email_direct(to_email: str, subject: str, message: str) -> bool:
     """
     resend_key = os.getenv('RESEND_API_KEY', '').strip()
     if resend_key:
+        from_email = os.getenv('RESEND_FROM', 'LightVote <onboarding@resend.dev>')
+        formatted_html = (
+            f'<div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px;">'
+            f'<div style="text-align: center; margin-bottom: 20px;">'
+            f'<h2 style="color: #102a56; margin: 0;">LightVote Election Commission</h2>'
+            f'<p style="color: #64748b; font-size: 13px; margin-top: 4px;">Electronic Voting & Security Verification</p>'
+            f'</div>'
+            f'<div style="background: #f8fafc; border-radius: 12px; padding: 18px; text-align: center; margin: 20px 0;">'
+            f'<span style="font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: bold;">One-Time Security Code</span>'
+            f'<div style="font-size: 32px; font-weight: 900; letter-spacing: 6px; color: #2563eb; margin: 8px 0; font-family: monospace;">'
+            f'{subject.split(":")[-1].strip() if ":" in subject else "OTP"}'
+            f'</div>'
+            f'<span style="font-size: 11px; color: #94a3b8;">Valid for 5 minutes - single-use only</span>'
+            f'</div>'
+            f'<p style="color: #334155; font-size: 13px; line-height: 1.6;">{message.replace(chr(10), "<br/>")}</p>'
+            f'<hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />'
+            f'<p style="font-size: 11px; color: #94a3b8; text-align: center;">If you did not request this verification, please disregard this email.</p>'
+            f'</div>'
+        )
+
+        # Try official resend SDK first
         try:
-            from_email = os.getenv('RESEND_FROM', 'LightVote <onboarding@resend.dev>')
+            import resend
+            resend.api_key = resend_key
+            resend.Emails.send({
+                "from": from_email,
+                "to": [to_email],
+                "subject": subject,
+                "html": formatted_html,
+                "text": message,
+            })
+            logger.info("Successfully sent email via Resend SDK to %s", to_email)
+            return True
+        except Exception as sdk_err:
+            logger.info("Resend SDK sending failed or not installed, falling back to HTTP API: %s", sdk_err)
+
+        # Fallback to direct HTTP API with explicit User-Agent
+        try:
             response = requests.post(
                 'https://api.resend.com/emails',
                 headers={
                     'Authorization': f'Bearer {resend_key}',
                     'Content-Type': 'application/json',
+                    'User-Agent': 'LightVote-Elections/1.0',
                 },
                 json={
                     'from': from_email,
                     'to': [to_email],
                     'subject': subject,
                     'text': message,
+                    'html': formatted_html,
                 },
                 timeout=10,
             )
             if response.status_code in (200, 201):
-                logger.info("Successfully sent email via Resend to %s", to_email)
+                logger.info("Successfully sent email via Resend API to %s", to_email)
                 return True
             else:
                 logger.warning("Resend API responded with error %s: %s", response.status_code, response.text)
