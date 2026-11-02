@@ -41,6 +41,7 @@ class VoterRegistrationView(generics.CreateAPIView):
         # Generate initial OTP for email verification
         token = OTPToken.generate_otp(user=voter.user, purpose='REGISTRATION', validity_minutes=10)
 
+        email_sent = True
         try:
             send_mail(
                 subject='LightVote email verification code',
@@ -50,18 +51,18 @@ class VoterRegistrationView(generics.CreateAPIView):
                 fail_silently=False,
             )
         except Exception as error:
-            logger.error('Could not send voter registration verification email: %s', error)
-            return Response(
-                {'error': 'Registration was saved, but verification email delivery failed. Request a new code and try again.'},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            email_sent = False
+            logger.warning('Could not send voter registration verification email (OTP=%s): %s', token.otp_code, error)
 
-        return Response({
+        response_data = {
             'message': 'Registration submitted successfully. Please verify your email with the OTP.',
             'voter_id': voter.voter_id_number,
             'email': voter.user.email,
-            'status': voter.status
-        }, status=status.HTTP_201_CREATED)
+            'status': voter.status,
+        }
+        if not email_sent:
+            response_data['warning'] = 'Verification email could not be delivered. Please use the Resend OTP option on the verification page.'
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
 class MyVoterProfileView(APIView):
     permission_classes = [IsAuthenticated]

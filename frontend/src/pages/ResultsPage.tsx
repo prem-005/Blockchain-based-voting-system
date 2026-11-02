@@ -671,7 +671,7 @@ export const ResultsPage: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono bg-slate-50 p-4 rounded-2xl border border-slate-200">
           <div>
             <span className="text-slate-400 block text-[10px] font-sans font-bold uppercase">Contract Address</span>
-            <span className="text-slate-800 font-semibold break-all">0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0</span>
+            <span className="text-slate-800 font-semibold break-all">0xcAd799F4747D576626cc6257a570FBe1Be009809</span>
           </div>
           <div>
             <span className="text-slate-400 block text-[10px] font-sans font-bold uppercase">Certification Root Hash</span>

@@ -78,7 +78,7 @@ export const ElectionControlPage: React.FC = () => {
   const friendlyError = (error: any) => {
     const detail = `${error?.shortMessage || ''} ${error?.reason || ''} ${error?.message || ''}`;
     if (/caller is not central admin/i.test(detail)) {
-      return 'This MetaMask account is not a Central Admin on the connected chain. Switch accounts and try again. For the local Hardhat deployment, the deployer account is 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266.';
+      return 'This MetaMask account is not a Central Admin on the connected chain. Switch to the deployer wallet (0x98E76942DCD6F00682D5Ddd4101495320B21B25B) on Sepolia and try again.';
     }
     if (/user rejected|action_rejected/i.test(detail)) return 'The wallet request was rejected.';
     return (error?.shortMessage || error?.reason || error?.message || 'Operation failed.').split('\n')[0].slice(0, 240);

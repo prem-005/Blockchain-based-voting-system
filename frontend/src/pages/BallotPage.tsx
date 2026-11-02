@@ -31,7 +31,7 @@ export const BallotPage: React.FC = () => {
 
   const [election, setElection] = useState<Election | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [constituencyId, setConstituencyId] = useState<number>(voterProfile?.constituency_id || 141);
+  const [constituencyId, setConstituencyId] = useState<number | null>(voterProfile?.constituency_id || null);
   const [selectedCandidateId, setSelectedCandidateId] = useState<number | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -45,10 +45,8 @@ export const BallotPage: React.FC = () => {
     if (voterProfile?.constituency_id) {
       setConstituencyId(voterProfile.constituency_id);
     }
-  }, [voterProfile]);
-
-  useEffect(() => {
-    if (!electionId) return;
+  }, [voterProfile]);  useEffect(() => {
+    if (!electionId || !constituencyId) return;
 
     setLoading(true);
     setHasAlreadyVoted(false);
@@ -153,6 +151,16 @@ export const BallotPage: React.FC = () => {
   };
 
   const isVoterPending = voterProfile?.status !== 'APPROVED';
+
+  // Wait for voter profile to load before proceeding
+  if (!voterProfile && loading) {
+    return (
+      <div className="max-w-md mx-auto py-16 px-4 text-center">
+        <div className="w-8 h-8 border-3 border-[#102A56] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+        <p className="text-xs font-semibold text-[#64748B]">Loading voter profile...</p>
+      </div>
+    );
+  }
 
   if (isVoterPending && user?.role === 'VOTER') {
     return (

@@ -222,7 +222,7 @@ export const VoterManagementPage: React.FC = () => {
                 <h3 className="text-base font-bold text-civic-navy">
                   Application Audit Trail: {selectedVoter.full_name}
                 </h3>
-                <button onClick={() => setSelectedVoter(null)} className="text-civic-muted hover:text-civic-navy">✕</button>
+                <button onClick={() => setSelectedVoter(null)} className="text-civic-muted hover:text-civic-navy text-lg font-bold leading-none">&times;</button>
               </div>
 
               {auditLogs.length === 0 ? (

@@ -152,9 +152,9 @@ export const VerifyReceiptPage: React.FC = () => {
           {/* Warning banner for previous chain reset */}
           {isChainMismatch && (
             <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 text-xs space-y-1">
-              <p className="font-bold">Recorded in Database from Previous Session</p>
+              <p className="font-bold">Archived Receipt from a Previous Session</p>
               <p className="text-[11px] text-amber-800 leading-relaxed">
-                This receipt exists in the verified database ledger (Block #{receipt?.block_number}), but the local Hardhat node was restarted and assigned a new genesis state. If you just cast a new ballot in the current session, verify your latest transaction hash instead.
+                This receipt exists in the LightVote verified ledger (Block #{receipt?.block_number}), but could not be re-verified on the current Sepolia chain configuration. This can happen if the transaction was recorded during an earlier deployment. If you just cast a ballot, please verify your latest transaction hash instead.
               </p>
             </div>
           )}
