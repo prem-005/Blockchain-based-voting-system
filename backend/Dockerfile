@@ -13,11 +13,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy and install python dependencies
-COPY backend/requirements.txt /app/
+COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend code
-COPY backend/ /app/
+COPY . /app/
 
 # Expose Django port
 EXPOSE 8000
