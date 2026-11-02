@@ -74,13 +74,28 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'lightvote_core.wsgi.application'
 
-# Database: SQLite for local development
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.getenv('SQLITE_PATH', str(BASE_DIR / 'db.sqlite3')),
+# Database: PostgreSQL if DATABASE_URL is set (production), otherwise SQLite
+DATABASE_URL = os.getenv('DATABASE_URL')
+if DATABASE_URL:
+    try:
+        import dj_database_url
+        DATABASES = {
+            'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600)
+        }
+    except ImportError:
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': os.getenv('SQLITE_PATH', str(BASE_DIR / 'db.sqlite3')),
+            }
+        }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': os.getenv('SQLITE_PATH', str(BASE_DIR / 'db.sqlite3')),
+        }
     }
-}
 
 # Custom User Model
 AUTH_USER_MODEL = 'authentication.User'
