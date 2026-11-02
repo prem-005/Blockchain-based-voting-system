@@ -1,9 +1,16 @@
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 require("@nomicfoundation/hardhat-toolbox");
 require("dotenv").config();
 
-const SEPOLIA_RPC_URL = process.env.SEPOLIA_RPC_URL || "https://rpc.sepolia.org";
+const SEPOLIA_RPC_URL = process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
 const POLYGON_AMOY_RPC_URL = process.env.POLYGON_AMOY_RPC_URL || "https://rpc-amoy.polygon.technology";
-const DEPLOYER_PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY || "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+let rawKey = (process.env.DEPLOYER_PRIVATE_KEY || "").trim();
+if (!rawKey) {
+  rawKey = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+} else if (!rawKey.startsWith("0x")) {
+  rawKey = `0x${rawKey}`;
+}
+const DEPLOYER_PRIVATE_KEY = rawKey;
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {

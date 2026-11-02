@@ -317,7 +317,7 @@ export const ElectionControlPage: React.FC = () => {
         {chainAdmin === false && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
             <p>The connected wallet {account ? `${account.slice(0, 8)}…${account.slice(-4)}` : ''} does not have the Central Admin contract role. Your LightVote admin login does not grant blockchain permissions.</p>
-            <p className="mt-1">Click <b>Change wallet</b> in the header and select <code className="font-mono">0xf39F…2266</code>. If it is not listed in MetaMask, import the local Hardhat deployer account using the private key shown in the terminal running <code className="font-mono">npx hardhat node</code>, then select it. This account is for local development only.</p>
+            <p className="mt-1">Click <b>Change wallet</b> in the header and select the contract deployer account that has the Central Admin role. Ensure your MetaMask is set to the <b>Sepolia</b> network.</p>
           </div>
         )}
         {account && chainAdmin === null && <div className="text-xs text-slate-500">Checking the connected wallet’s Central Admin role…</div>}

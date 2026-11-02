@@ -19,9 +19,9 @@ interface Web3ContextType {
 
 const Web3Context = createContext<Web3ContextType | undefined>(undefined);
 
-const RPC_URL = import.meta.env.VITE_RPC_URL || import.meta.env.VITE_HARDHAT_RPC_URL || 'http://127.0.0.1:8545';
-const EXPECTED_CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || (contractsConfig as any).chainId || 31337);
-const CHAIN_NAME = import.meta.env.VITE_CHAIN_NAME || 'LightVote Local EVM';
+const RPC_URL = import.meta.env.VITE_RPC_URL || import.meta.env.VITE_HARDHAT_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com';
+const EXPECTED_CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || (contractsConfig as any).chainId || 11155111);
+const CHAIN_NAME = import.meta.env.VITE_CHAIN_NAME || ((contractsConfig as any).network === 'sepolia' ? 'Sepolia' : 'LightVote EVM');
 
 export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [account, setAccount] = useState<string | null>(null);

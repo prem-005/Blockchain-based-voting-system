@@ -14,7 +14,9 @@ async function main() {
   console.log("\n[1/4] Deploying ElectionManager...");
   const ElectionManager = await hre.ethers.getContractFactory("ElectionManager");
   const electionManager = await ElectionManager.deploy(deployer.address);
-  await electionManager.waitForDeployment();
+  const emTx = electionManager.deploymentTransaction();
+  console.log("   Transaction broadcasted:", emTx?.hash);
+  await emTx.wait(1);
   const electionManagerAddress = await electionManager.getAddress();
   console.log("-> ElectionManager deployed at:", electionManagerAddress);
 
@@ -22,7 +24,9 @@ async function main() {
   console.log("\n[2/4] Deploying VoterEligibility...");
   const VoterEligibility = await hre.ethers.getContractFactory("VoterEligibility");
   const voterEligibility = await VoterEligibility.deploy(electionManagerAddress, deployer.address);
-  await voterEligibility.waitForDeployment();
+  const veTx = voterEligibility.deploymentTransaction();
+  console.log("   Transaction broadcasted:", veTx?.hash);
+  await veTx.wait(1);
   const voterEligibilityAddress = await voterEligibility.getAddress();
   console.log("-> VoterEligibility deployed at:", voterEligibilityAddress);
 
@@ -30,7 +34,9 @@ async function main() {
   console.log("\n[3/4] Deploying LightVote...");
   const LightVote = await hre.ethers.getContractFactory("LightVote");
   const lightVote = await LightVote.deploy(electionManagerAddress, voterEligibilityAddress, deployer.address);
-  await lightVote.waitForDeployment();
+  const lvTx = lightVote.deploymentTransaction();
+  console.log("   Transaction broadcasted:", lvTx?.hash);
+  await lvTx.wait(1);
   const lightVoteAddress = await lightVote.getAddress();
   console.log("-> LightVote deployed at:", lightVoteAddress);
 
@@ -38,7 +44,9 @@ async function main() {
   console.log("\n[4/4] Deploying ElectionResults...");
   const ElectionResults = await hre.ethers.getContractFactory("ElectionResults");
   const electionResults = await ElectionResults.deploy(electionManagerAddress, lightVoteAddress, deployer.address);
-  await electionResults.waitForDeployment();
+  const erTx = electionResults.deploymentTransaction();
+  console.log("   Transaction broadcasted:", erTx?.hash);
+  await erTx.wait(1);
   const electionResultsAddress = await electionResults.getAddress();
   console.log("-> ElectionResults deployed at:", electionResultsAddress);
 
