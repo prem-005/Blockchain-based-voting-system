@@ -16,7 +16,7 @@ def get_brevo_sender_email(brevo_key: str) -> str:
     if _CACHED_BREVO_SENDER:
         return _CACHED_BREVO_SENDER
 
-    custom_sender = os.getenv('BREVO_SENDER_EMAIL', '').strip()
+    custom_sender = os.getenv('BREVO_SENDER_EMAIL', '').strip().strip('\'"')
     if custom_sender:
         _CACHED_BREVO_SENDER = custom_sender
         return custom_sender
@@ -34,6 +34,8 @@ def get_brevo_sender_email(brevo_key: str) -> str:
                 _CACHED_BREVO_SENDER = active_senders[0]['email']
                 logger.info("Auto-detected Brevo verified sender: %s", _CACHED_BREVO_SENDER)
                 return _CACHED_BREVO_SENDER
+        else:
+            logger.warning("Brevo /v3/senders check returned HTTP %s: %s", res.status_code, res.text)
     except Exception as err:
         logger.warning("Could not auto-fetch Brevo senders: %s", err)
 
@@ -72,8 +74,13 @@ def send_email_direct(to_email: str, subject: str, message: str) -> bool:
     formatted_html = format_otp_html(subject, message)
 
     # 1. Brevo REST API (HTTPS Port 443 - works to ANY voter email)
-    brevo_key = os.getenv('BREVO_API_KEY', '').strip()
+    brevo_key = os.getenv('BREVO_API_KEY', '').strip().strip('\'"')
     if brevo_key:
+        if not brevo_key.startswith('xkeysib-'):
+            logger.warning(
+                "BREVO_API_KEY does not start with 'xkeysib-'. "
+                "Ensure you generated a v3 API Key in Brevo under SMTP & API -> API Keys tab, not an SMTP key."
+            )
         sender_email = get_brevo_sender_email(brevo_key)
         try:
             response = requests.post(
@@ -101,9 +108,9 @@ def send_email_direct(to_email: str, subject: str, message: str) -> bool:
             logger.error("Failed to send via Brevo API: %s", err)
 
     # 2. Resend REST API (HTTPS Port 443)
-    resend_key = os.getenv('RESEND_API_KEY', '').strip()
+    resend_key = os.getenv('RESEND_API_KEY', '').strip().strip('\'"')
     if resend_key:
-        from_email = os.getenv('RESEND_FROM', 'LightVote <onboarding@resend.dev>')
+        from_email = os.getenv('RESEND_FROM', 'LightVote <onboarding@resend.dev>').strip().strip('\'"')
         try:
             response = requests.post(
                 'https://api.resend.com/emails',
@@ -143,6 +150,125 @@ def send_email_direct(to_email: str, subject: str, message: str) -> bool:
     except Exception as err:
         logger.warning("Could not deliver email to %s via Django backend: %s", to_email, err)
         return False
+
+
+def test_email_service(to_email: str) -> dict:
+    """Detailed live diagnosis of configured email providers for the test endpoint."""
+    brevo_key = os.getenv('BREVO_API_KEY', '').strip().strip('\'"')
+    resend_key = os.getenv('RESEND_API_KEY', '').strip().strip('\'"')
+    brevo_sender = os.getenv('BREVO_SENDER_EMAIL', '').strip().strip('\'"')
+
+    result = {
+        'target_email': to_email,
+        'brevo': {
+            'configured': bool(brevo_key),
+            'key_prefix': (brevo_key[:10] + '...') if brevo_key else None,
+            'is_v3_format': brevo_key.startswith('xkeysib-') if brevo_key else False,
+            'sender_email': brevo_sender or None,
+        },
+        'resend': {
+            'configured': bool(resend_key),
+            'key_prefix': (resend_key[:8] + '...') if resend_key else None,
+        },
+    }
+
+    if brevo_key:
+        if not brevo_key.startswith('xkeysib-'):
+            result['brevo']['warning'] = (
+                "Your BREVO_API_KEY does not start with 'xkeysib-'. "
+                "In Brevo, go to SMTP & API -> click the 'API Keys' tab (NOT SMTP) -> Generate a new API key. "
+                "The key must start with 'xkeysib-'."
+            )
+
+        # Check senders endpoint
+        try:
+            acc_resp = requests.get(
+                'https://api.brevo.com/v3/senders',
+                headers={'api-key': brevo_key, 'accept': 'application/json'},
+                timeout=5,
+            )
+            result['brevo']['senders_api_status'] = acc_resp.status_code
+            if acc_resp.status_code == 200:
+                senders = acc_resp.json().get('senders', [])
+                result['brevo']['detected_senders'] = [s.get('email') for s in senders]
+            else:
+                result['brevo']['senders_api_error'] = acc_resp.text
+        except Exception as e:
+            result['brevo']['senders_api_exception'] = str(e)
+
+        # Send test email
+        formatted_html = format_otp_html('LightVote Test OTP: 849201', 'This is a test OTP verification from LightVote.')
+        sender_email = get_brevo_sender_email(brevo_key)
+        result['brevo']['used_sender'] = sender_email
+        try:
+            send_resp = requests.post(
+                'https://api.brevo.com/v3/smtp/email',
+                headers={
+                    'api-key': brevo_key,
+                    'Content-Type': 'application/json',
+                    'accept': 'application/json',
+                },
+                json={
+                    'sender': {'name': 'LightVote Election Commission', 'email': sender_email},
+                    'to': [{'email': to_email}],
+                    'subject': 'LightVote Test OTP: 849201',
+                    'htmlContent': formatted_html,
+                    'textContent': 'This is a test OTP verification from LightVote. Code: 849201',
+                },
+                timeout=10,
+            )
+            result['brevo']['send_http_status'] = send_resp.status_code
+            result['brevo']['send_response'] = send_resp.text
+            if send_resp.status_code in (200, 201):
+                result['success'] = True
+                result['message'] = f'Successfully sent test email via Brevo to {to_email}! Check your Gmail inbox and spam folder.'
+                return result
+            else:
+                result['brevo']['status'] = 'failed'
+                if send_resp.status_code == 401:
+                    result['brevo']['diagnosis'] = (
+                        "Brevo returned 401 Unauthorized ('Key not found'). "
+                        "This means the key in Render environment variable BREVO_API_KEY is invalid, revoked, or an SMTP key instead of an API key. "
+                        "Please go to Brevo -> SMTP & API -> API Keys tab -> Generate a new API key (starts with 'xkeysib-') and update BREVO_API_KEY on Render."
+                    )
+        except Exception as e:
+            result['brevo']['send_exception'] = str(e)
+
+    # Try Resend fallback
+    if resend_key:
+        from_email = os.getenv('RESEND_FROM', 'LightVote <onboarding@resend.dev>').strip().strip('\'"')
+        formatted_html = format_otp_html('LightVote Test OTP: 849201', 'This is a test OTP verification from LightVote.')
+        try:
+            res_resp = requests.post(
+                'https://api.resend.com/emails',
+                headers={
+                    'Authorization': f'Bearer {resend_key}',
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'LightVote-Elections/1.0',
+                },
+                json={
+                    'from': from_email,
+                    'to': [to_email],
+                    'subject': 'LightVote Test OTP: 849201',
+                    'text': 'This is a test OTP verification from LightVote. Code: 849201',
+                    'html': formatted_html,
+                },
+                timeout=10,
+            )
+            result['resend']['send_http_status'] = res_resp.status_code
+            result['resend']['send_response'] = res_resp.text
+            if res_resp.status_code in (200, 201):
+                result['success'] = True
+                result['message'] = f'Successfully sent test email via Resend to {to_email}!'
+                return result
+            else:
+                result['resend']['status'] = 'failed'
+        except Exception as e:
+            result['resend']['send_exception'] = str(e)
+
+    result['success'] = False
+    result['message'] = 'Email dispatch failed. See provider diagnostics in this response.'
+    return result
 
 
 def send_email_async(to_email: str, subject: str, message: str):

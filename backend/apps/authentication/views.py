@@ -212,41 +212,14 @@ class TestEmailView(APIView):
     def get(self, request):
         to_email = request.query_params.get('email', '').strip()
         if not to_email:
-            return Response({'error': 'Please provide an email address in the query parameters (e.g. ?email=voter@example.com)'}, status=status.HTTP_400_BAD_REQUEST)
-
-        brevo_key = os.getenv('BREVO_API_KEY', '').strip()
-        resend_key = os.getenv('RESEND_API_KEY', '').strip()
-
-        provider = 'Brevo' if brevo_key else ('Resend' if resend_key else 'Django Default')
-
-        status_info = {
-            'active_provider': provider,
-            'brevo_key_configured': bool(brevo_key),
-            'brevo_key_prefix': (brevo_key[:8] + '...') if brevo_key else None,
-            'resend_key_configured': bool(resend_key),
-            'target_email': to_email,
-        }
-
-        if not brevo_key and not resend_key:
-            status_info['warning'] = 'Neither BREVO_API_KEY nor RESEND_API_KEY is configured. Falling back to Django default mail.'
-
-        from .email_service import send_email_direct
-        try:
-            success = send_email_direct(
-                to_email=to_email,
-                subject='LightVote Test OTP: 849201',
-                message='This is a live test from LightVote. Your test OTP is: 849201. If you received this, your email integration is working perfectly!'
+            return Response(
+                {'error': 'Please provide an email address in the query parameters (e.g. ?email=voter@gmail.com)'},
+                status=status.HTTP_400_BAD_REQUEST
             )
-            status_info['success'] = success
-            if success:
-                status_info['message'] = f'Email dispatched successfully via {provider} to {to_email}! Check your inbox and spam folder.'
-                return Response(status_info, status=status.HTTP_200_OK)
-            else:
-                status_info['message'] = f'Email dispatch via {provider} failed. Check server logs for details.'
-                return Response(status_info, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        except Exception as e:
-            status_info['exception'] = str(e)
-            return Response(status_info, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        from .email_service import test_email_service
+        diagnosis = test_email_service(to_email)
+        return Response(diagnosis, status=status.HTTP_200_OK)
 
 
 class AdminAccountListCreateView(APIView):
