@@ -146,6 +146,12 @@ CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in os.getenv(
     'http://localhost:5173,http://127.0.0.1:5173'
 ).split(',') if origin.strip()]
 
+# Cross-origin cookie settings — required for Vercel (frontend) + Render (backend) on HTTPS
+SESSION_COOKIE_SAMESITE = 'None'
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SAMESITE = 'None'
+CSRF_COOKIE_SECURE = True
+
 # Email OTP Configuration
 EMAIL_BACKEND_TYPE = os.getenv('EMAIL_BACKEND_TYPE', 'console')
 if EMAIL_BACKEND_TYPE == 'smtp':
