@@ -271,7 +271,7 @@ export const ResultsPage: React.FC = () => {
                 )}
               </h1>
               <p className="text-slate-300 text-xs sm:text-sm mt-0.5">
-                Official tabulation recorded on Hardhat EVM (Chain ID 31337) with cryptographic nullifiers.
+                Official tabulation recorded on-chain with cryptographic nullifiers.
               </p>
             </div>
           </div>

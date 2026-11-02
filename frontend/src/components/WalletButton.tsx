@@ -3,7 +3,7 @@ import { useWeb3 } from '../context/Web3Context';
 import { Wallet, AlertCircle, CheckCircle2 } from 'lucide-react';
 import contractsConfig from '../contracts/contracts.json';
 
-const EXPECTED_CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || (contractsConfig as any).chainId || 31337);
+const EXPECTED_CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || (contractsConfig as any).chainId || 11155111);
 
 export const WalletButton: React.FC = () => {
   const { account, chainId, isConnected, isConnecting, connectWallet, changeWallet, switchNetwork, error } = useWeb3();

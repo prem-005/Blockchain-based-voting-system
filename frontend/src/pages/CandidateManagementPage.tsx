@@ -9,6 +9,9 @@ import { useWeb3 } from '../context/Web3Context';
 import { Candidate, Election, Party, District, Constituency } from '../types';
 import { apiOrigin } from '../services/apiClient';
 import { useAuth } from '../context/AuthContext';
+import contractsConfig from '../contracts/contracts.json';
+
+const EXPECTED_CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || (contractsConfig as any).chainId || 11155111);
 
 const API_BASE = apiOrigin;
 
@@ -180,7 +183,7 @@ export const CandidateManagementPage: React.FC = () => {
     let confirmedRegistrationTx: string | null = null;
     try {
       if (modalMode === 'add') {
-        const expectedChainId = Number(import.meta.env.VITE_CHAIN_ID || 31337);
+        const expectedChainId = EXPECTED_CHAIN_ID;
         if (!account || chainId !== expectedChainId) throw new Error(`Connect an administrator wallet on chain ${expectedChainId} before registering a candidate.`);
         const candRef = ethers.keccak256(
           ethers.toUtf8Bytes(formData.name + formData.election + Date.now())
@@ -227,7 +230,7 @@ export const CandidateManagementPage: React.FC = () => {
         const candidate = candidates.find((item) => item.id === editingId);
         if (!candidate) throw new Error('Candidate record is no longer available. Refresh and try again.');
         if (candidate.is_active !== formData.is_active) {
-          const expectedChainId = Number(import.meta.env.VITE_CHAIN_ID || 31337);
+          const expectedChainId = EXPECTED_CHAIN_ID;
           if (!account || chainId !== expectedChainId) throw new Error(`Connect an administrator wallet on chain ${expectedChainId} to change ballot status.`);
           const lightVote = getContract('LightVote', true);
           if (!lightVote || !candidate.candidate_id) throw new Error('Candidate is missing its verified on-chain ID.');
@@ -266,7 +269,7 @@ export const CandidateManagementPage: React.FC = () => {
     try {
       const candidate = candidates.find((item) => item.id === id);
       if (!candidate?.candidate_id) throw new Error('Candidate does not have a verified on-chain ID.');
-      const expectedChainId = Number(import.meta.env.VITE_CHAIN_ID || 31337);
+      const expectedChainId = EXPECTED_CHAIN_ID;
       if (!account || chainId !== expectedChainId) throw new Error(`Connect an administrator wallet on chain ${expectedChainId} to withdraw a candidate.`);
       const lightVote = getContract('LightVote', true);
       if (!lightVote) throw new Error('LightVote contract is unavailable.');
@@ -288,7 +291,7 @@ export const CandidateManagementPage: React.FC = () => {
   /* ── toggle active ── */
   const toggleActive = async (c: Candidate) => {
     try {
-      const expectedChainId = Number(import.meta.env.VITE_CHAIN_ID || 31337);
+      const expectedChainId = EXPECTED_CHAIN_ID;
       if (!account || chainId !== expectedChainId) throw new Error(`Connect an administrator wallet on chain ${expectedChainId} to change ballot status.`);
       if (!c.candidate_id) throw new Error('Candidate does not have a verified on-chain ID.');
       const lightVote = getContract('LightVote', true);

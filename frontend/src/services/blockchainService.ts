@@ -1,7 +1,7 @@
 import { ethers, BrowserProvider, Contract } from 'ethers';
 import contractsConfig from '../contracts/contracts.json';
 
-export const EXPECTED_CHAIN_ID = 31337; // Hardhat Local Node
+export const EXPECTED_CHAIN_ID = Number((contractsConfig as any).chainId || 11155111);
 
 export const blockchainService = {
   isMetaMaskAvailable(): boolean {

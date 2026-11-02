@@ -17,6 +17,9 @@ import { useWeb3 } from '../context/Web3Context';
 import { Candidate, Election } from '../types';
 import { PartySymbol } from '../components/PartySymbol';
 import { apiOrigin } from '../services/apiClient';
+import contractsConfig from '../contracts/contracts.json';
+
+const EXPECTED_CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || (contractsConfig as any).chainId || 11155111);
 
 const API_BASE = apiOrigin;
 
@@ -95,7 +98,7 @@ export const BallotPage: React.FC = () => {
 
     try {
       if (!isConnected || !account) throw new Error('Connect your registered voting wallet before casting a ballot.');
-      const expectedChainId = Number(import.meta.env.VITE_CHAIN_ID || 31337);
+      const expectedChainId = EXPECTED_CHAIN_ID;
       if (chainId !== expectedChainId) throw new Error(`Switch MetaMask to the configured voting network (chain ${expectedChainId}).`);
       const lightVoteContract = getContract('LightVote', true);
       if (!lightVoteContract) throw new Error('Voting contract configuration is unavailable for this network.');
