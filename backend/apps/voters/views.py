@@ -1,14 +1,18 @@
 from django.utils import timezone
 from django.conf import settings
 from django.core.mail import send_mail
+from django.core import signing
 from django.db import IntegrityError
 from django.views.decorators.csrf import csrf_protect
 from django.utils.decorators import method_decorator
+import secrets
 import logging
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from eth_account import Account
+from eth_account.messages import encode_defunct
 from web3 import Web3
 from django.db.models import Q
 from .models import Voter, VoterAuditLog
@@ -79,14 +83,13 @@ class MyVoterProfileView(APIView):
         voter = request.user.voter_profile
         wallet_address = request.data.get('wallet_address')
         if wallet_address:
-            # Normalize address
-            wallet_address = wallet_address.strip()
-            if not wallet_address.startswith('0x') or len(wallet_address) != 42:
-                return Response({'error': 'Invalid Ethereum wallet address format.'}, status=status.HTTP_400_BAD_REQUEST)
-            voter.wallet_address = wallet_address
-            voter.save(update_fields=['wallet_address'])
+            return Response(
+                {'error': 'Wallet changes must be signed by the new wallet. Use the ballot wallet-binding flow.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         return Response(VoterDetailSerializer(voter).data)
+
 
 class VoterAdminListView(generics.ListAPIView):
     permission_classes = [IsElectionAdministrator]
@@ -275,13 +278,10 @@ class BallotCredentialView(APIView):
         except Exception:
             return Response({'error': 'A valid Ethereum wallet address is required.'}, status=status.HTTP_400_BAD_REQUEST)
         if voter.wallet_address and voter.wallet_address.lower() != wallet.lower():
-            return Response({'error': 'Connected wallet does not match the wallet bound to this voter profile.'}, status=status.HTTP_403_FORBIDDEN)
-        if not voter.wallet_address:
-            voter.wallet_address = wallet
-            try:
-                voter.save(update_fields=['wallet_address'])
-            except Exception:
-                return Response({'error': 'This wallet is already linked to another voter account.'}, status=status.HTTP_409_CONFLICT)
+            return Response({
+                'error': 'Connected wallet does not match the wallet bound to this voter profile.',
+                'wallet_mismatch': True,
+            }, status=status.HTTP_403_FORBIDDEN)
 
         election_id = serializer.validated_data['election_id']
         candidate_id = serializer.validated_data['candidate_id']
@@ -330,6 +330,15 @@ class BallotCredentialView(APIView):
         except Exception:
             return Response({'error': 'Could not verify current election and eligibility state on the blockchain.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
+        # Bind only after every eligibility check passes. A failed ballot attempt
+        # must not permanently attach the voter profile to an unintended wallet.
+        if not voter.wallet_address:
+            voter.wallet_address = wallet
+            try:
+                voter.save(update_fields=['wallet_address'])
+            except IntegrityError:
+                return Response({'error': 'This wallet is already linked to another voter account.'}, status=status.HTTP_409_CONFLICT)
+
         return Response({
             'election_id': election_id,
             'constituency_id': voter.constituency_id,
@@ -337,3 +346,122 @@ class BallotCredentialView(APIView):
             'nullifier_hash': Web3.to_hex(nullifier),
             'merkle_proof': [Web3.to_hex(node) for node in proof],
         })
+
+
+def _wallet_binding_message(payload, token):
+    return '\n'.join([
+        'LightVote voter wallet change',
+        f"Origin: {payload['origin']}",
+        f"Voter account ID: {payload['user_id']}",
+        f"Election ID: {payload['election_id']}",
+        f"New wallet: {payload['wallet_address']}",
+        f"One-time challenge: {token}",
+        'This signature only links this wallet to your voter profile. It does not cast a vote or spend funds.',
+    ])
+
+
+def _validate_wallet_binding_voter(request, election_id):
+    voter = getattr(request.user, 'voter_profile', None)
+    if not voter or voter.status != Voter.Status.APPROVED or not request.user.is_verified:
+        return None, None, Response(
+            {'error': 'An approved, email-verified voter account is required.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    try:
+        election = Election.objects.get(pk=election_id)
+    except (Election.DoesNotExist, TypeError, ValueError):
+        return None, None, Response({'error': 'Election not found.'}, status=status.HTTP_404_NOT_FOUND)
+    if election.status != Election.Status.ACTIVE or not election.is_currently_open:
+        return None, None, Response({'error': 'Election is not open.'}, status=status.HTTP_409_CONFLICT)
+    if VoteReceipt.objects.filter(election=election, user=request.user).exists():
+        return None, None, Response({'error': 'Your wallet cannot be changed after voting in this election.'}, status=status.HTTP_409_CONFLICT)
+
+    try:
+        nullifier = derive_nullifier(request.user.pk, election.pk)
+        w3 = get_web3()
+        if not w3.is_connected() or int(w3.eth.chain_id) != int(settings.CHAIN_ID):
+            raise RuntimeError('Configured blockchain RPC is unavailable or on the wrong chain.')
+        eligibility_config = load_contract_config()['VoterEligibility']
+        eligibility = w3.eth.contract(
+            address=Web3.to_checksum_address(eligibility_config['address']),
+            abi=eligibility_config['abi'],
+        )
+        if eligibility.functions.hasVotedNullifier(election.pk, nullifier).call():
+            return None, None, Response({'error': 'Your wallet cannot be changed after your vote is recorded on-chain.'}, status=status.HTTP_409_CONFLICT)
+    except Exception:
+        logger.exception('Unable to verify on-chain vote status before wallet change')
+        return None, None, Response(
+            {'error': 'Could not verify whether you have voted on-chain. Try again later.'},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    return voter, election, None
+
+
+@method_decorator(csrf_protect, name='dispatch')
+class VoterWalletBindingChallengeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        voter, election, error = _validate_wallet_binding_voter(request, request.data.get('election_id'))
+        if error:
+            return error
+        try:
+            wallet_address = Web3.to_checksum_address(request.data.get('wallet_address', ''))
+        except Exception:
+            return Response({'error': 'A valid Ethereum wallet address is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if voter.wallet_address and voter.wallet_address.lower() == wallet_address.lower():
+            return Response({'error': 'This wallet is already linked to your voter profile.'}, status=status.HTTP_409_CONFLICT)
+
+        payload = {
+            'user_id': request.user.pk,
+            'election_id': election.pk,
+            'wallet_address': wallet_address,
+            'origin': request.headers.get('Origin') or request.get_host(),
+            'nonce': secrets.token_urlsafe(24),
+        }
+        token = signing.dumps(payload, salt='lightvote-voter-wallet-binding')
+        request.session['voter_wallet_binding_challenge'] = token
+        return Response({'challenge': token, 'message': _wallet_binding_message(payload, token)})
+
+
+@method_decorator(csrf_protect, name='dispatch')
+class VoterWalletBindingConfirmView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        token = request.data.get('challenge', '')
+        signature = request.data.get('signature', '')
+        try:
+            payload = signing.loads(token, salt='lightvote-voter-wallet-binding', max_age=300)
+        except signing.SignatureExpired:
+            return Response({'error': 'Wallet verification expired. Request a new signature.'}, status=status.HTTP_400_BAD_REQUEST)
+        except signing.BadSignature:
+            return Response({'error': 'Invalid wallet verification challenge.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if payload.get('user_id') != request.user.pk:
+            return Response({'error': 'This wallet challenge belongs to another voter account.'}, status=status.HTTP_403_FORBIDDEN)
+        if payload.get('origin') != (request.headers.get('Origin') or request.get_host()):
+            return Response({'error': 'Wallet verification must be completed from the same LightVote site.'}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            wallet_address = Web3.to_checksum_address(payload['wallet_address'])
+            recovered_address = Web3.to_checksum_address(Account.recover_message(
+                encode_defunct(text=_wallet_binding_message(payload, token)),
+                signature=signature,
+            ))
+        except Exception:
+            return Response({'error': 'The wallet signature is invalid.'}, status=status.HTTP_400_BAD_REQUEST)
+        if recovered_address.lower() != wallet_address.lower():
+            return Response({'error': 'Sign the verification message with the MetaMask wallet you want to link.'}, status=status.HTTP_403_FORBIDDEN)
+        if request.session.pop('voter_wallet_binding_challenge', None) != token:
+            return Response({'error': 'This wallet challenge was already used or belongs to another browser session.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        voter, _election, error = _validate_wallet_binding_voter(request, payload.get('election_id'))
+        if error:
+            return error
+        try:
+            voter.wallet_address = wallet_address
+            voter.save(update_fields=['wallet_address'])
+        except IntegrityError:
+            return Response({'error': 'This wallet is already linked to another voter profile.'}, status=status.HTTP_409_CONFLICT)
+        return Response({'message': 'Wallet linked successfully. Review and confirm your vote again.'})

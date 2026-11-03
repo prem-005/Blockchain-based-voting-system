@@ -27,7 +27,7 @@ export const BallotPage: React.FC = () => {
   const { electionId } = useParams<{ electionId: string }>();
   const navigate = useNavigate();
   const { user, voterProfile } = useAuth();
-  const { account, isConnected, connectWallet, getContract, chainId, switchNetwork } = useWeb3();
+  const { account, isConnected, connectWallet, getContract, chainId, switchNetwork, signer } = useWeb3();
 
   const [election, setElection] = useState<Election | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -39,6 +39,9 @@ export const BallotPage: React.FC = () => {
   const [submitStatus, setSubmitStatus] = useState<'preparing' | 'wallet' | 'chain' | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [walletMismatch, setWalletMismatch] = useState(false);
+  const [bindingWallet, setBindingWallet] = useState(false);
   const [hasAlreadyVoted, setHasAlreadyVoted] = useState(false);
   const [existingReceiptTx, setExistingReceiptTx] = useState<string | null>(null);
   const voteSubmissionLock = useRef(false);
@@ -80,6 +83,7 @@ export const BallotPage: React.FC = () => {
     if (submitting) return;
     setSelectedCandidateId(cid);
     setError(null);
+    setNotice(null);
   };
 
   const handleReviewClick = () => {
@@ -91,6 +95,35 @@ export const BallotPage: React.FC = () => {
     setShowConfirmModal(true);
   };
 
+  const handleBindConnectedWallet = async () => {
+    if (!account || !signer || !electionId || bindingWallet) return;
+    setBindingWallet(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const challenge = await apiRequest('/voters/wallet-binding/challenge/', {
+        method: 'POST',
+        body: JSON.stringify({ wallet_address: account, election_id: Number(electionId) }),
+      });
+      const signature = await signer.signMessage(challenge.message);
+      const result = await apiRequest('/voters/wallet-binding/confirm/', {
+        method: 'POST',
+        body: JSON.stringify({ challenge: challenge.challenge, signature }),
+      });
+      setWalletMismatch(false);
+      setNotice(result.message || 'Wallet linked. Review and confirm your vote again.');
+    } catch (err: any) {
+      const detail = err?.shortMessage || err?.message || 'Wallet verification failed.';
+      if (err?.code === 4001 || err?.code === 'ACTION_REJECTED' || /user rejected|request rejected/i.test(detail)) {
+        setError('Wallet verification was cancelled in MetaMask. Your voter profile was not changed.');
+      } else {
+        setError(detail);
+      }
+    } finally {
+      setBindingWallet(false);
+    }
+  };
+
   const handleConfirmVote = async () => {
     if (!selectedCandidateId || !electionId || voteSubmissionLock.current) return;
     voteSubmissionLock.current = true;
@@ -98,6 +131,7 @@ export const BallotPage: React.FC = () => {
     setSubmitting(true);
     setSubmitStatus('preparing');
     setError(null);
+    setNotice(null);
 
     try {
       if (!isConnected || !account) throw new Error('Connect your registered voting wallet before casting a ballot.');
@@ -141,7 +175,10 @@ export const BallotPage: React.FC = () => {
       navigate(`/voter/receipt/${savedReceipt.tx_hash}`);
     } catch (err: any) {
       const detail = err?.shortMessage || err?.reason || err?.message || '';
-      if (err?.code === 4001 || err?.code === 'ACTION_REJECTED' || /user rejected|request rejected/i.test(detail)) {
+      if (err?.data?.wallet_mismatch) {
+        setWalletMismatch(true);
+        setError('This voter profile is linked to a different MetaMask wallet. Switch to that wallet, or verify and link this account before voting.');
+      } else if (err?.code === 4001 || err?.code === 'ACTION_REJECTED' || /user rejected|request rejected/i.test(detail)) {
         setError('The MetaMask request was cancelled. No vote was cast. Select Review & Confirm to try again.');
       } else if (err?.code === 'INSUFFICIENT_FUNDS' || /insufficient funds/i.test(detail)) {
         setError('This wallet needs more Sepolia ETH to pay the vote transaction fee. Add Sepolia test ETH, then try again.');
@@ -278,9 +315,24 @@ export const BallotPage: React.FC = () => {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs">
+        <div className="flex flex-wrap items-center gap-2 p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span>{error}</span>
+          <span className="flex-1">{error}</span>
+          {walletMismatch && account && (
+            <button
+              onClick={handleBindConnectedWallet}
+              disabled={bindingWallet || !signer}
+              className="px-3 py-2 rounded-lg bg-white border border-rose-300 font-bold text-rose-800 disabled:opacity-50"
+            >
+              {bindingWallet ? 'Verify in MetaMask...' : 'Verify and link this wallet'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {notice && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs" role="status">
+          {notice}
         </div>
       )}
 

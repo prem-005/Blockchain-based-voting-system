@@ -7,6 +7,8 @@ from .views import (
     VoterAuditLogsView,
     EligibilityRootsView,
     BallotCredentialView,
+    VoterWalletBindingChallengeView,
+    VoterWalletBindingConfirmView,
 )
 
 urlpatterns = [
@@ -17,4 +19,6 @@ urlpatterns = [
     path('admin/<int:pk>/audit-logs/', VoterAuditLogsView.as_view(), name='voter-audit-logs'),
     path('admin/eligibility-roots/', EligibilityRootsView.as_view(), name='eligibility-roots'),
     path('ballot-credential/', BallotCredentialView.as_view(), name='ballot-credential'),
+    path('wallet-binding/challenge/', VoterWalletBindingChallengeView.as_view(), name='wallet-binding-challenge'),
+    path('wallet-binding/confirm/', VoterWalletBindingConfirmView.as_view(), name='wallet-binding-confirm'),
 ]
