@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { 
   ArrowLeft, 
@@ -41,6 +41,7 @@ export const BallotPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [hasAlreadyVoted, setHasAlreadyVoted] = useState(false);
   const [existingReceiptTx, setExistingReceiptTx] = useState<string | null>(null);
+  const voteSubmissionLock = useRef(false);
 
   useEffect(() => {
     if (voterProfile?.constituency_id) {
@@ -82,6 +83,7 @@ export const BallotPage: React.FC = () => {
   };
 
   const handleReviewClick = () => {
+    if (submitting || voteSubmissionLock.current) return;
     if (!selectedCandidateId) {
       setError("Please select one candidate to cast your vote.");
       return;
@@ -90,7 +92,8 @@ export const BallotPage: React.FC = () => {
   };
 
   const handleConfirmVote = async () => {
-    if (!selectedCandidateId || !electionId) return;
+    if (!selectedCandidateId || !electionId || voteSubmissionLock.current) return;
+    voteSubmissionLock.current = true;
     setShowConfirmModal(false);
     setSubmitting(true);
     setSubmitStatus('preparing');
@@ -146,6 +149,7 @@ export const BallotPage: React.FC = () => {
         setError(detail || 'Failed to submit ballot.');
       }
     } finally {
+      voteSubmissionLock.current = false;
       setSubmitting(false);
       setSubmitStatus(null);
     }
@@ -410,9 +414,10 @@ export const BallotPage: React.FC = () => {
               </button>
               <button
                 onClick={handleConfirmVote}
-                className="flex-1 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-bold rounded-lg shadow-xs"
+                disabled={submitting}
+                className="flex-1 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-bold rounded-lg shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Confirm & Cast
+                {submitting ? 'Submitting...' : 'Confirm & Cast'}
               </button>
             </div>
           </div>
