@@ -41,23 +41,6 @@ export const CandidateManagementPage: React.FC = () => {
   const [allConstituencies, setAllConstituencies] = useState<Constituency[]>([]);
   const [constituencies, setConstituencies] = useState<Constituency[]>([]);
   const [constituenciesLoading, setConstituenciesLoading] = useState(false);
-  const formElection = elections.find((election) => election.id === Number(formData.election));
-  const formElectionConstituencyIds = formElection?.constituency_ids || [];
-  const electionConstituencies = elections.find((election) => election.id === Number(selectedElection))?.constituency_ids || [];
-  const filterConstituencies = electionConstituencies.length
-    ? allConstituencies.filter((constituency) => electionConstituencies.includes(constituency.id))
-    : allConstituencies;
-  const nominationConstituencies = formElectionConstituencyIds.length
-    ? constituencies.filter((constituency) => formElectionConstituencyIds.includes(constituency.id))
-    : constituencies;
-  const nominationDistrictIds = formElectionConstituencyIds.length
-    ? new Set(allConstituencies.filter((constituency) => formElectionConstituencyIds.includes(constituency.id)).map((constituency) => constituency.district))
-    : null;
-  const allowedDistricts = districts.filter((district) =>
-    (assignedDistrictId == null || district.id === assignedDistrictId) &&
-    (!formElection || district.state === formElection.state) &&
-    (!nominationDistrictIds || nominationDistrictIds.has(district.id))
-  );
 
   /* ── filters ── */
   const [selectedElection, setSelectedElection] = useState<string>('');
@@ -81,6 +64,24 @@ export const CandidateManagementPage: React.FC = () => {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+
+  const formElection = elections.find((election) => election.id === Number(formData.election));
+  const formElectionConstituencyIds = formElection?.constituency_ids || [];
+  const electionConstituencies = elections.find((election) => election.id === Number(selectedElection))?.constituency_ids || [];
+  const filterConstituencies = electionConstituencies.length
+    ? allConstituencies.filter((constituency) => electionConstituencies.includes(constituency.id))
+    : allConstituencies;
+  const nominationConstituencies = formElectionConstituencyIds.length
+    ? constituencies.filter((constituency) => formElectionConstituencyIds.includes(constituency.id))
+    : constituencies;
+  const nominationDistrictIds = formElectionConstituencyIds.length
+    ? new Set(allConstituencies.filter((constituency) => formElectionConstituencyIds.includes(constituency.id)).map((constituency) => constituency.district))
+    : null;
+  const allowedDistricts = districts.filter((district) =>
+    (assignedDistrictId == null || district.id === assignedDistrictId) &&
+    (!formElection || district.state === formElection.state) &&
+    (!nominationDistrictIds || nominationDistrictIds.has(district.id))
+  );
 
   /* ── fetch helpers ── */
   const fetchCandidates = async () => {
