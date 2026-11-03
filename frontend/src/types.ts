@@ -33,6 +33,7 @@ export interface Constituency {
   category: 'GEN' | 'SC' | 'ST';
   district: number;
   district_name?: string;
+  state?: number;
 }
 
 export interface Election {
@@ -40,6 +41,7 @@ export interface Election {
   name: string;
   year: number;
   scope: string;
+  constituency_ids?: number[];
   state: number;
   state_name?: string;
   start_time: string;

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import Party, Candidate
 from .blockchain import get_verified_candidate_registration
+from apps.elections.models import Election
 
 class PartySerializer(serializers.ModelSerializer):
     class Meta:
@@ -80,8 +81,13 @@ class CandidateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({'election': 'Election does not match the confirmed chain registration.'})
             if not district or chain_data['district_id'] != district.pk:
                 raise serializers.ValidationError({'district': 'District does not match the confirmed chain registration.'})
+            if election and district and district.state_id != election.state_id:
+                raise serializers.ValidationError({'district': 'Candidate district must belong to the election state.'})
             if not constituency or chain_data['constituency_id'] != constituency.pk or constituency.district_id != district.pk:
                 raise serializers.ValidationError({'constituency': 'Constituency does not match the confirmed chain registration or selected district.'})
+            if (election.scope == Election.Scope.BY_ELECTION and election.constituencies.exists()
+                    and not election.constituencies.filter(pk=constituency.pk).exists()):
+                raise serializers.ValidationError({'constituency': 'This constituency is not included in the selected by-election.'})
             if not party or chain_data['party_abbreviation'].lower() != party.abbreviation.lower():
                 raise serializers.ValidationError({'party': 'Party does not match the confirmed chain registration.'})
             if chain_data['name'].strip() != (attrs.get('name') or '').strip():

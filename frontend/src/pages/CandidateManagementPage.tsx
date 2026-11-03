@@ -38,9 +38,26 @@ export const CandidateManagementPage: React.FC = () => {
   const [elections, setElections] = useState<Election[]>([]);
   const [parties, setParties] = useState<Party[]>([]);
   const [districts, setDistricts] = useState<District[]>([]);
+  const [allConstituencies, setAllConstituencies] = useState<Constituency[]>([]);
   const [constituencies, setConstituencies] = useState<Constituency[]>([]);
   const [constituenciesLoading, setConstituenciesLoading] = useState(false);
-  const allowedDistricts = assignedDistrictId == null ? districts : districts.filter((district) => district.id === assignedDistrictId);
+  const formElection = elections.find((election) => election.id === Number(formData.election));
+  const formElectionConstituencyIds = formElection?.constituency_ids || [];
+  const electionConstituencies = elections.find((election) => election.id === Number(selectedElection))?.constituency_ids || [];
+  const filterConstituencies = electionConstituencies.length
+    ? allConstituencies.filter((constituency) => electionConstituencies.includes(constituency.id))
+    : allConstituencies;
+  const nominationConstituencies = formElectionConstituencyIds.length
+    ? constituencies.filter((constituency) => formElectionConstituencyIds.includes(constituency.id))
+    : constituencies;
+  const nominationDistrictIds = formElectionConstituencyIds.length
+    ? new Set(allConstituencies.filter((constituency) => formElectionConstituencyIds.includes(constituency.id)).map((constituency) => constituency.district))
+    : null;
+  const allowedDistricts = districts.filter((district) =>
+    (assignedDistrictId == null || district.id === assignedDistrictId) &&
+    (!formElection || district.state === formElection.state) &&
+    (!nominationDistrictIds || nominationDistrictIds.has(district.id))
+  );
 
   /* ── filters ── */
   const [selectedElection, setSelectedElection] = useState<string>('');
@@ -85,12 +102,14 @@ export const CandidateManagementPage: React.FC = () => {
       apiRequest('/elections/elections/'),
       apiRequest('/candidates/parties/'),
       apiRequest('/elections/districts/'),
-    ]).then(([electionData, partyData, districtData]) => {
+      apiRequest('/elections/constituencies/'),
+    ]).then(([electionData, partyData, districtData, constituencyData]) => {
       const loadedElections = electionData.results || electionData || [];
       const loadedDistricts = districtData.results || districtData || [];
       setElections(loadedElections);
       setParties(partyData.results || partyData || []);
       setDistricts(loadedDistricts);
+      setAllConstituencies(constituencyData.results || constituencyData || []);
       if (loadedElections.length) setSelectedElection(String(loadedElections[0].id));
       setFormData((current) => ({
         ...current,
@@ -99,6 +118,8 @@ export const CandidateManagementPage: React.FC = () => {
       }));
     }).catch((e: any) => setError(e.message || 'Could not load candidate form data.'));
   }, []);
+
+  useEffect(() => { setSelectedConstituency(''); }, [selectedElection]);
 
   useEffect(() => { fetchCandidates(); }, [selectedElection, selectedConstituency, assignedDistrictId]);
 
@@ -110,11 +131,18 @@ export const CandidateManagementPage: React.FC = () => {
     let current = true;
     setConstituenciesLoading(true);
     apiRequest(`/elections/constituencies/?district_id=${formData.district}`)
-      .then(d => { if (current) setConstituencies(d.results || d || []); })
+      .then(d => {
+        if (!current) return;
+        const districtConstituencies: Constituency[] = d.results || d || [];
+        const electionIds = elections.find((election) => election.id === Number(formData.election))?.constituency_ids || [];
+        setConstituencies(electionIds.length
+          ? districtConstituencies.filter((constituency) => electionIds.includes(constituency.id))
+          : districtConstituencies);
+      })
       .catch((e: any) => { if (current) setError(e.message || 'Could not load constituencies for this district.'); })
       .finally(() => { if (current) setConstituenciesLoading(false); });
     return () => { current = false; };
-  }, [formData.district]);
+  }, [formData.district, formData.election, elections]);
 
   const flash = (msg: string) => {
     setSuccessMsg(msg);
@@ -149,10 +177,14 @@ export const CandidateManagementPage: React.FC = () => {
 
   /* ── open add modal ── */
   const openAdd = () => {
+    const election = elections.find((item) => item.id === Number(selectedElection));
+    const firstScopedConstituency = allConstituencies.find((item) =>
+      election?.constituency_ids?.includes(item.id)
+    );
     setFormData({
       ...EMPTY_FORM,
       election: Number(selectedElection) || elections[0]?.id || 0,
-      district: assignedDistrictId ?? districts[0]?.id ?? 0,
+      district: assignedDistrictId ?? firstScopedConstituency?.district ?? districts.find((district) => district.state === election?.state)?.id ?? districts[0]?.id ?? 0,
       constituency: 0,
     });
     clearPhoto();
@@ -439,7 +471,7 @@ export const CandidateManagementPage: React.FC = () => {
             className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
           >
             <option value="">All Constituencies</option>
-            {constituencies.map((c) => (
+            {filterConstituencies.map((c) => (
               <option key={c.id} value={c.id}>AC-{c.id}: {c.name}</option>
             ))}
           </select>
@@ -703,7 +735,18 @@ export const CandidateManagementPage: React.FC = () => {
                     <label className="block font-semibold text-slate-700 mb-1">Election *</label>
                     <select
                       value={formData.election}
-                      onChange={(e) => setFormData({ ...formData, election: parseInt(e.target.value) })}
+                      onChange={(e) => {
+                        const electionId = parseInt(e.target.value);
+                        const election = elections.find((item) => item.id === electionId);
+                        const selectedIds = election?.constituency_ids || [];
+                        const firstConstituency = allConstituencies.find((item) => selectedIds.includes(item.id));
+                        setFormData({
+                          ...formData,
+                          election: electionId,
+                          constituency: 0,
+                          district: assignedDistrictId ?? firstConstituency?.district ?? districts.find((district) => district.state === election?.state)?.id ?? formData.district,
+                        });
+                      }}
                       className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500"
                     >
                       {elections.map((el) => (
@@ -730,12 +773,12 @@ export const CandidateManagementPage: React.FC = () => {
                       <label className="block font-semibold text-slate-700 mb-1">Constituency *</label>
                       <select
                         value={formData.constituency}
-                        disabled={constituenciesLoading || constituencies.length === 0}
+                        disabled={constituenciesLoading || nominationConstituencies.length === 0}
                         onChange={(e) => setFormData({ ...formData, constituency: e.target.value ? Number(e.target.value) : 0 })}
                         className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500"
                       >
                         <option value={0}>{constituenciesLoading ? 'Loading constituencies…' : 'Select a constituency'}</option>
-                        {constituencies.map((con) => (
+                        {nominationConstituencies.map((con) => (
                           <option key={con.id} value={con.id}>AC-{con.id}: {con.name}</option>
                         ))}
                       </select>

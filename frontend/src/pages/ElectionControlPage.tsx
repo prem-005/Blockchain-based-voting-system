@@ -3,7 +3,7 @@ import { Sliders, Play, Square, CheckCircle2, Archive, Clock, ShieldCheck, Plus,
 import { apiRequest } from '../api/client';
 import { apiRequestAllPages } from '../services/apiClient';
 import { useWeb3 } from '../context/Web3Context';
-import { Election } from '../types';
+import { Constituency, Election } from '../types';
 
 export const ElectionControlPage: React.FC = () => {
   const { getContract, account, chainId } = useWeb3();
@@ -16,7 +16,10 @@ export const ElectionControlPage: React.FC = () => {
   const [removalConfirmation, setRemovalConfirmation] = useState<{ electionId: number; electionName: string; legacy: boolean } | null>(null);
   const [removalBusy, setRemovalBusy] = useState(false);
   const [states, setStates] = useState<any[]>([]);
-  const [newElection, setNewElection] = useState({ name: '', year: new Date().getFullYear(), scope: 'STATE_ASSEMBLY', state: '', start_time: '', end_time: '' });
+  const [stateConstituencies, setStateConstituencies] = useState<Constituency[]>([]);
+  const [constituenciesLoading, setConstituenciesLoading] = useState(false);
+  const [constituencySearch, setConstituencySearch] = useState('');
+  const [newElection, setNewElection] = useState({ name: '', year: new Date().getFullYear(), scope: 'STATE_ASSEMBLY', state: '', constituency_ids: [] as number[], start_time: '', end_time: '' });
 
   const fetchElections = async () => {
     try {
@@ -54,6 +57,32 @@ export const ElectionControlPage: React.FC = () => {
     fetchElections();
     apiRequest('/elections/states/').then((data) => setStates(data.results || data || [])).catch(console.error);
   }, []);
+
+  useEffect(() => {
+    setStateConstituencies([]);
+    setNewElection((current) => ({ ...current, constituency_ids: [] }));
+    if (newElection.scope !== 'BY_ELECTION' || !newElection.state) return;
+    let active = true;
+    setConstituenciesLoading(true);
+    apiRequest(`/elections/constituencies/?state_id=${newElection.state}`)
+      .then((data) => { if (active) setStateConstituencies(data.results || data || []); })
+      .catch((error: any) => { if (active) setStatusMsg(`Could not load constituencies: ${friendlyError(error)}`); })
+      .finally(() => { if (active) setConstituenciesLoading(false); });
+    return () => { active = false; };
+  }, [newElection.scope, newElection.state]);
+
+  const visibleStateConstituencies = stateConstituencies.filter((item) =>
+    `${item.name} ${item.id} ${item.district_name}`.toLowerCase().includes(constituencySearch.trim().toLowerCase())
+  );
+
+  const toggleElectionConstituency = (id: number) => {
+    setNewElection((current) => ({
+      ...current,
+      constituency_ids: current.constituency_ids.includes(id)
+        ? current.constituency_ids.filter((selectedId) => selectedId !== id)
+        : [...current.constituency_ids, id],
+    }));
+  };
 
   useEffect(() => {
     let active = true;
@@ -100,6 +129,9 @@ export const ElectionControlPage: React.FC = () => {
       if (!manager || !account) throw new Error('Connect the Central Admin wallet on the configured chain.');
       await ensureChainAdmin(manager);
       if (!newElection.state || !newElection.start_time || !newElection.end_time) throw new Error('Complete all election fields.');
+      if (newElection.scope === 'BY_ELECTION' && newElection.constituency_ids.length === 0) {
+        throw new Error('Select at least one constituency for a by-election.');
+      }
       const onChainIds = await manager.getAllElectionIds();
       const persistedIds = elections.map((election) => election.id);
       const deployedIds = onChainIds.map((id: bigint) => Number(id));
@@ -114,7 +146,7 @@ export const ElectionControlPage: React.FC = () => {
       const receipt = await tx.wait();
       await apiRequest('/elections/elections/', { method: 'POST', body: JSON.stringify({ id: electionId, ...newElection, state: Number(newElection.state), start_time: start.toISOString(), end_time: end.toISOString(), creation_tx_hash: receipt.hash }) });
       setStatusMsg(`Election #${electionId} created and reconciled with the blockchain.`);
-      setNewElection({ name: '', year: new Date().getFullYear(), scope: 'STATE_ASSEMBLY', state: '', start_time: '', end_time: '' });
+      setNewElection({ name: '', year: new Date().getFullYear(), scope: 'STATE_ASSEMBLY', state: '', constituency_ids: [], start_time: '', end_time: '' });
       await fetchElections();
     } catch (err: any) {
       setStatusMsg(`Election creation failed: ${friendlyError(err)}`);
@@ -357,7 +389,46 @@ export const ElectionControlPage: React.FC = () => {
           <input required value={newElection.name} onChange={(e) => setNewElection({ ...newElection, name: e.target.value })} placeholder="Election name" className="rounded-xl border border-slate-200 px-3 py-2 text-xs" />
           <input required type="number" value={newElection.year} onChange={(e) => setNewElection({ ...newElection, year: Number(e.target.value) })} placeholder="Year" className="rounded-xl border border-slate-200 px-3 py-2 text-xs" />
           <select required value={newElection.state} onChange={(e) => setNewElection({ ...newElection, state: e.target.value })} className="rounded-xl border border-slate-200 px-3 py-2 text-xs"><option value="">Select state</option>{states.map((state) => <option key={state.id} value={state.id}>{state.name}</option>)}</select>
-          <select value={newElection.scope} onChange={(e) => setNewElection({ ...newElection, scope: e.target.value })} className="rounded-xl border border-slate-200 px-3 py-2 text-xs"><option value="STATE_ASSEMBLY">State Assembly</option><option value="PARLIAMENTARY">Parliamentary</option><option value="BY_ELECTION">By-election</option></select>
+          <select value={newElection.scope} onChange={(e) => setNewElection({ ...newElection, scope: e.target.value })} className="rounded-xl border border-slate-200 px-3 py-2 text-xs"><option value="STATE_ASSEMBLY">State Assembly · all constituencies</option><option value="PARLIAMENTARY">Parliamentary</option><option value="BY_ELECTION">By-election · selected constituencies</option></select>
+          {newElection.scope === 'BY_ELECTION' && (
+            <section className="md:col-span-3 rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="font-semibold text-slate-800">By-election constituencies</p>
+                  <p className="text-[11px] text-slate-500">Choose one or more from the selected state. {newElection.constituency_ids.length} selected.</p>
+                </div>
+                <input
+                  type="search"
+                  value={constituencySearch}
+                  onChange={(event) => setConstituencySearch(event.target.value)}
+                  placeholder="Search constituency or district"
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
+                  disabled={!newElection.state}
+                />
+              </div>
+              <div className="max-h-44 overflow-y-auto rounded-lg border border-slate-100 divide-y divide-slate-100">
+                {constituenciesLoading ? (
+                  <p className="p-3 text-xs text-slate-500">Loading constituencies…</p>
+                ) : !newElection.state ? (
+                  <p className="p-3 text-xs text-slate-500">Select a state to load its constituency catalog.</p>
+                ) : visibleStateConstituencies.length === 0 ? (
+                  <p className="p-3 text-xs text-slate-500">No matching constituencies are available in the catalog.</p>
+                ) : visibleStateConstituencies.map((constituency) => (
+                  <label key={constituency.id} className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs hover:bg-slate-50">
+                    <input
+                      type="checkbox"
+                      checked={newElection.constituency_ids.includes(constituency.id)}
+                      onChange={() => toggleElectionConstituency(constituency.id)}
+                      className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                    />
+                    <span className="font-medium text-slate-800">AC-{constituency.id}: {constituency.name}</span>
+                    <span className="text-slate-500">{constituency.district_name}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-[10px] text-amber-700">The list reflects constituencies currently loaded in the election catalog.</p>
+            </section>
+          )}
           <input required type="datetime-local" value={newElection.start_time} onChange={(e) => setNewElection({ ...newElection, start_time: e.target.value })} className="rounded-xl border border-slate-200 px-3 py-2 text-xs" />
           <input required type="datetime-local" value={newElection.end_time} onChange={(e) => setNewElection({ ...newElection, end_time: e.target.value })} className="rounded-xl border border-slate-200 px-3 py-2 text-xs" />
           <button disabled={chainAdmin !== true} className="md:col-span-3 justify-self-end px-4 py-2 bg-brand-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"><Plus className="w-4 h-4" /> Create on chain and save</button>
@@ -383,7 +454,9 @@ export const ElectionControlPage: React.FC = () => {
                   </div>
                   <h3 className="font-bold text-slate-900 text-sm">{elec.name}</h3>
                   <p className="text-[11px] text-slate-400">
-                    Window: {new Date(elec.start_time).toLocaleString()} to {new Date(elec.end_time).toLocaleString()}
+                    {elec.scope === 'BY_ELECTION' && elec.constituency_ids?.length
+                      ? `By-election · ${elec.constituency_ids.map((id) => `AC-${id}`).join(', ')}`
+                      : `${elec.scope === 'PARLIAMENTARY' ? 'Parliamentary' : 'Statewide'} scope`} · Window: {new Date(elec.start_time).toLocaleString()} to {new Date(elec.end_time).toLocaleString()}
                   </p>
                   {legacyElectionIds.includes(elec.id) && (
                     <p className="text-[11px] text-amber-700">This record belongs to an older contract deployment and cannot be started here. Create a new election to use the active contract.</p>

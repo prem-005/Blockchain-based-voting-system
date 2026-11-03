@@ -35,8 +35,11 @@ class ConstituencyListView(generics.ListAPIView):
     def get_queryset(self):
         queryset = Constituency.objects.select_related('district').all().order_by('name')
         district_id = self.request.query_params.get('district_id')
+        state_id = self.request.query_params.get('state_id')
         if district_id:
             queryset = queryset.filter(district_id=district_id)
+        if state_id:
+            queryset = queryset.filter(district__state_id=state_id)
         return queryset
 
 class ElectionListCreateView(generics.ListCreateAPIView):
@@ -48,7 +51,7 @@ class ElectionListCreateView(generics.ListCreateAPIView):
         return [IsCentralAdministrator()]
 
     def get_queryset(self):
-        queryset = Election.objects.all()
+        queryset = Election.objects.prefetch_related('constituencies').all()
         year = self.request.query_params.get('year')
         status_param = self.request.query_params.get('status')
         if year:

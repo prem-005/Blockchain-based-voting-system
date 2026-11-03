@@ -58,6 +58,10 @@ class Election(models.Model):
     year = models.PositiveSmallIntegerField(db_index=True)
     scope = models.CharField(max_length=30, choices=Scope.choices, default=Scope.STATE_ASSEMBLY)
     state = models.ForeignKey(State, on_delete=models.PROTECT, related_name='elections')
+    constituencies = models.ManyToManyField(
+        'Constituency', blank=True, related_name='elections',
+        help_text='Selected Assembly Constituencies for a by-election. Empty means statewide scope for legacy elections.',
+    )
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
     status = models.CharField(max_length=25, choices=Status.choices, default=Status.UPCOMING)
