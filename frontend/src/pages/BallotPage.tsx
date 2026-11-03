@@ -36,6 +36,7 @@ export const BallotPage: React.FC = () => {
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<'preparing' | 'wallet' | 'chain' | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasAlreadyVoted, setHasAlreadyVoted] = useState(false);
@@ -92,6 +93,7 @@ export const BallotPage: React.FC = () => {
     if (!selectedCandidateId || !electionId) return;
     setShowConfirmModal(false);
     setSubmitting(true);
+    setSubmitStatus('preparing');
     setError(null);
 
     try {
@@ -110,6 +112,7 @@ export const BallotPage: React.FC = () => {
         })
       });
 
+      setSubmitStatus('wallet');
       const tx = await lightVoteContract.castVote(
         BigInt(electionId),
         BigInt(credential.constituency_id),
@@ -117,6 +120,7 @@ export const BallotPage: React.FC = () => {
         credential.nullifier_hash,
         credential.merkle_proof
       );
+      setSubmitStatus('chain');
       const chainReceipt = await tx.wait();
       if (!chainReceipt || chainReceipt.status !== 1) throw new Error('The blockchain transaction did not confirm successfully.');
 
@@ -133,9 +137,17 @@ export const BallotPage: React.FC = () => {
       setHasAlreadyVoted(true);
       navigate(`/voter/receipt/${savedReceipt.tx_hash}`);
     } catch (err: any) {
-      setError(err.message || "Failed to submit ballot.");
+      const detail = err?.shortMessage || err?.reason || err?.message || '';
+      if (err?.code === 4001 || err?.code === 'ACTION_REJECTED' || /user rejected|request rejected/i.test(detail)) {
+        setError('The MetaMask request was cancelled. No vote was cast. Select Review & Confirm to try again.');
+      } else if (err?.code === 'INSUFFICIENT_FUNDS' || /insufficient funds/i.test(detail)) {
+        setError('This wallet needs more Sepolia ETH to pay the vote transaction fee. Add Sepolia test ETH, then try again.');
+      } else {
+        setError(detail || 'Failed to submit ballot.');
+      }
     } finally {
       setSubmitting(false);
+      setSubmitStatus(null);
     }
   };
 
@@ -268,6 +280,17 @@ export const BallotPage: React.FC = () => {
         </div>
       )}
 
+      {submitting && submitStatus && (
+        <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 text-xs" role="status" aria-live="polite">
+          <RotateCw className="w-4 h-4 flex-shrink-0 animate-spin" />
+          <span>
+            {submitStatus === 'preparing' && 'Preparing your ballot. Please wait...'}
+            {submitStatus === 'wallet' && 'Approve the vote transaction in MetaMask. The vote is not submitted until you confirm it.'}
+            {submitStatus === 'chain' && 'MetaMask approved the transaction. Waiting for Sepolia to confirm your vote...'}
+          </span>
+        </div>
+      )}
+
       {/* Candidates List (Matching Screenshot #4) */}
       <div className="space-y-3">
         <h2 className="text-sm font-extrabold text-[#102A56]">Candidates</h2>
@@ -341,7 +364,12 @@ export const BallotPage: React.FC = () => {
           disabled={!selectedCandidateId || submitting}
           className="px-6 py-2.5 bg-[#102A56] hover:bg-[#0C2042] text-white text-xs font-bold rounded-lg shadow-xs transition flex items-center gap-1.5 disabled:opacity-50"
         >
-          <span>{submitting ? 'Submitting Vote...' : 'Review & Confirm'}</span>
+          <span>
+            {!submitting && 'Review & Confirm'}
+            {submitting && submitStatus === 'preparing' && 'Preparing Vote...'}
+            {submitting && submitStatus === 'wallet' && 'Approve in MetaMask...'}
+            {submitting && submitStatus === 'chain' && 'Confirming Vote...'}
+          </span>
           <ArrowRight className="w-3.5 h-3.5" />
         </button>
       </div>
