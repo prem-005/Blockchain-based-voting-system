@@ -19,7 +19,11 @@ export const ElectionControlPage: React.FC = () => {
   const [stateConstituencies, setStateConstituencies] = useState<Constituency[]>([]);
   const [constituenciesLoading, setConstituenciesLoading] = useState(false);
   const [constituencySearch, setConstituencySearch] = useState('');
-  const [newElection, setNewElection] = useState({ name: '', year: new Date().getFullYear(), scope: 'STATE_ASSEMBLY', state: '', constituency_ids: [] as number[], start_time: '', end_time: '' });
+  const [newElection, setNewElection] = useState({
+    name: '', year: new Date().getFullYear(), scope: 'STATE_ASSEMBLY', state: '', constituency_ids: [] as number[],
+    start_date: '', start_hour: '12', start_minute: '00', start_period: 'AM',
+    end_date: '', end_hour: '12', end_minute: '00', end_period: 'AM',
+  });
 
   const fetchElections = async () => {
     try {
@@ -84,6 +88,15 @@ export const ElectionControlPage: React.FC = () => {
     }));
   };
 
+  const makeLocalDateTime = (date: string, hour: string, minute: string, period: string): Date | null => {
+    if (!date) return null;
+    const [year, month, day] = date.split('-').map(Number);
+    const hour12 = Number(hour) % 12;
+    const hour24 = hour12 + (period === 'PM' ? 12 : 0);
+    const value = new Date(year, month - 1, day, hour24, Number(minute));
+    return Number.isNaN(value.getTime()) ? null : value;
+  };
+
   useEffect(() => {
     let active = true;
     const checkAdminRole = async () => {
@@ -128,10 +141,13 @@ export const ElectionControlPage: React.FC = () => {
       const manager = getContract('ElectionManager', true);
       if (!manager || !account) throw new Error('Connect the Central Admin wallet on the configured chain.');
       await ensureChainAdmin(manager);
-      if (!newElection.state || !newElection.start_time || !newElection.end_time) throw new Error('Complete all election fields.');
+      if (!newElection.state || !newElection.start_date || !newElection.end_date) throw new Error('Complete all election fields.');
       if (newElection.scope === 'BY_ELECTION' && newElection.constituency_ids.length === 0) {
         throw new Error('Select at least one constituency for a by-election.');
       }
+      const start = makeLocalDateTime(newElection.start_date, newElection.start_hour, newElection.start_minute, newElection.start_period);
+      const end = makeLocalDateTime(newElection.end_date, newElection.end_hour, newElection.end_minute, newElection.end_period);
+      if (!start || !end) throw new Error('Enter valid election start and end dates and times.');
       const onChainIds = await manager.getAllElectionIds();
       const persistedIds = elections.map((election) => election.id);
       const deployedIds = onChainIds.map((id: bigint) => Number(id));
@@ -139,14 +155,26 @@ export const ElectionControlPage: React.FC = () => {
       if (!Number.isSafeInteger(electionId)) throw new Error('Could not allocate a safe election ID.');
       const state = states.find((item) => String(item.id) === newElection.state);
       if (!state) throw new Error('Select a valid state.');
-      const start = new Date(newElection.start_time);
-      const end = new Date(newElection.end_time);
       if (end <= start) throw new Error('End time must be after start time.');
       const tx = await manager.createElection(BigInt(electionId), newElection.name, newElection.year, state.name, BigInt(Math.floor(start.getTime() / 1000)), BigInt(Math.floor(end.getTime() / 1000)));
       const receipt = await tx.wait();
-      await apiRequest('/elections/elections/', { method: 'POST', body: JSON.stringify({ id: electionId, ...newElection, state: Number(newElection.state), start_time: start.toISOString(), end_time: end.toISOString(), creation_tx_hash: receipt.hash }) });
+      await apiRequest('/elections/elections/', { method: 'POST', body: JSON.stringify({
+        id: electionId,
+        name: newElection.name,
+        year: newElection.year,
+        scope: newElection.scope,
+        state: Number(newElection.state),
+        constituency_ids: newElection.constituency_ids,
+        start_time: start.toISOString(),
+        end_time: end.toISOString(),
+        creation_tx_hash: receipt.hash,
+      }) });
       setStatusMsg(`Election #${electionId} created and reconciled with the blockchain.`);
-      setNewElection({ name: '', year: new Date().getFullYear(), scope: 'STATE_ASSEMBLY', state: '', constituency_ids: [], start_time: '', end_time: '' });
+      setNewElection({
+        name: '', year: new Date().getFullYear(), scope: 'STATE_ASSEMBLY', state: '', constituency_ids: [],
+        start_date: '', start_hour: '12', start_minute: '00', start_period: 'AM',
+        end_date: '', end_hour: '12', end_minute: '00', end_period: 'AM',
+      });
       await fetchElections();
     } catch (err: any) {
       setStatusMsg(`Election creation failed: ${friendlyError(err)}`);
@@ -429,8 +457,26 @@ export const ElectionControlPage: React.FC = () => {
               <p className="text-[10px] text-amber-700">The list reflects constituencies currently loaded in the election catalog.</p>
             </section>
           )}
-          <input required type="datetime-local" value={newElection.start_time} onChange={(e) => setNewElection({ ...newElection, start_time: e.target.value })} className="rounded-xl border border-slate-200 px-3 py-2 text-xs" />
-          <input required type="datetime-local" value={newElection.end_time} onChange={(e) => setNewElection({ ...newElection, end_time: e.target.value })} className="rounded-xl border border-slate-200 px-3 py-2 text-xs" />
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-slate-700">Start date and time</label>
+            <input required type="date" value={newElection.start_date} onChange={(e) => setNewElection({ ...newElection, start_date: e.target.value })} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs" />
+            <div className="grid grid-cols-3 gap-1.5">
+              <select aria-label="Start hour" value={newElection.start_hour} onChange={(e) => setNewElection({ ...newElection, start_hour: e.target.value })} className="min-w-0 rounded-xl border border-slate-200 px-2 py-2 text-xs">{Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0')).map((hour) => <option key={hour} value={hour}>{hour}</option>)}</select>
+              <select aria-label="Start minute" value={newElection.start_minute} onChange={(e) => setNewElection({ ...newElection, start_minute: e.target.value })} className="min-w-0 rounded-xl border border-slate-200 px-2 py-2 text-xs">{Array.from({ length: 60 }, (_, minute) => String(minute).padStart(2, '0')).map((minute) => <option key={minute} value={minute}>{minute}</option>)}</select>
+              <select aria-label="Start AM or PM" value={newElection.start_period} onChange={(e) => setNewElection({ ...newElection, start_period: e.target.value })} className="min-w-0 rounded-xl border border-slate-200 px-2 py-2 text-xs"><option value="AM">AM</option><option value="PM">PM</option></select>
+            </div>
+            <p className="text-[10px] text-slate-500">Hour : minute · AM/PM</p>
+          </div>
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-slate-700">End date and time</label>
+            <input required type="date" value={newElection.end_date} onChange={(e) => setNewElection({ ...newElection, end_date: e.target.value })} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs" />
+            <div className="grid grid-cols-3 gap-1.5">
+              <select aria-label="End hour" value={newElection.end_hour} onChange={(e) => setNewElection({ ...newElection, end_hour: e.target.value })} className="min-w-0 rounded-xl border border-slate-200 px-2 py-2 text-xs">{Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0')).map((hour) => <option key={hour} value={hour}>{hour}</option>)}</select>
+              <select aria-label="End minute" value={newElection.end_minute} onChange={(e) => setNewElection({ ...newElection, end_minute: e.target.value })} className="min-w-0 rounded-xl border border-slate-200 px-2 py-2 text-xs">{Array.from({ length: 60 }, (_, minute) => String(minute).padStart(2, '0')).map((minute) => <option key={minute} value={minute}>{minute}</option>)}</select>
+              <select aria-label="End AM or PM" value={newElection.end_period} onChange={(e) => setNewElection({ ...newElection, end_period: e.target.value })} className="min-w-0 rounded-xl border border-slate-200 px-2 py-2 text-xs"><option value="AM">AM</option><option value="PM">PM</option></select>
+            </div>
+            <p className="text-[10px] text-slate-500">Hour : minute · AM/PM</p>
+          </div>
           <button disabled={chainAdmin !== true} className="md:col-span-3 justify-self-end px-4 py-2 bg-brand-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"><Plus className="w-4 h-4" /> Create on chain and save</button>
         </form>
         {loading ? (
