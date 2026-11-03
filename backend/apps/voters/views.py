@@ -360,7 +360,7 @@ def _wallet_binding_message(payload, token):
     ])
 
 
-def _validate_wallet_binding_voter(request, election_id):
+def _validate_wallet_binding_voter(request, election_id, verify_onchain_vote=False):
     voter = getattr(request.user, 'voter_profile', None)
     if not voter or voter.status != Voter.Status.APPROVED or not request.user.is_verified:
         return None, None, Response(
@@ -376,24 +376,25 @@ def _validate_wallet_binding_voter(request, election_id):
     if VoteReceipt.objects.filter(election=election, user=request.user).exists():
         return None, None, Response({'error': 'Your wallet cannot be changed after voting in this election.'}, status=status.HTTP_409_CONFLICT)
 
-    try:
-        nullifier = derive_nullifier(request.user.pk, election.pk)
-        w3 = get_web3()
-        if not w3.is_connected() or int(w3.eth.chain_id) != int(settings.CHAIN_ID):
-            raise RuntimeError('Configured blockchain RPC is unavailable or on the wrong chain.')
-        eligibility_config = load_contract_config()['VoterEligibility']
-        eligibility = w3.eth.contract(
-            address=Web3.to_checksum_address(eligibility_config['address']),
-            abi=eligibility_config['abi'],
-        )
-        if eligibility.functions.hasVotedNullifier(election.pk, nullifier).call():
-            return None, None, Response({'error': 'Your wallet cannot be changed after your vote is recorded on-chain.'}, status=status.HTTP_409_CONFLICT)
-    except Exception:
-        logger.exception('Unable to verify on-chain vote status before wallet change')
-        return None, None, Response(
-            {'error': 'Could not verify whether you have voted on-chain. Try again later.'},
-            status=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
+    if verify_onchain_vote:
+        try:
+            nullifier = derive_nullifier(request.user.pk, election.pk)
+            w3 = get_web3()
+            if not w3.is_connected() or int(w3.eth.chain_id) != int(settings.CHAIN_ID):
+                raise RuntimeError('Configured blockchain RPC is unavailable or on the wrong chain.')
+            eligibility_config = load_contract_config()['VoterEligibility']
+            eligibility = w3.eth.contract(
+                address=Web3.to_checksum_address(eligibility_config['address']),
+                abi=eligibility_config['abi'],
+            )
+            if eligibility.functions.hasVotedNullifier(election.pk, nullifier).call():
+                return None, None, Response({'error': 'Your wallet cannot be changed after your vote is recorded on-chain.'}, status=status.HTTP_409_CONFLICT)
+        except Exception:
+            logger.exception('Unable to verify on-chain vote status before wallet change')
+            return None, None, Response(
+                {'error': 'Could not verify whether you have voted on-chain. Try again later.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
     return voter, election, None
 
 
@@ -453,15 +454,17 @@ class VoterWalletBindingConfirmView(APIView):
             return Response({'error': 'The wallet signature is invalid.'}, status=status.HTTP_400_BAD_REQUEST)
         if recovered_address.lower() != wallet_address.lower():
             return Response({'error': 'Sign the verification message with the MetaMask wallet you want to link.'}, status=status.HTTP_403_FORBIDDEN)
-        if request.session.pop('voter_wallet_binding_challenge', None) != token:
-            return Response({'error': 'This wallet challenge was already used or belongs to another browser session.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        voter, _election, error = _validate_wallet_binding_voter(request, payload.get('election_id'))
+        voter, _election, error = _validate_wallet_binding_voter(
+            request, payload.get('election_id'), verify_onchain_vote=True
+        )
         if error:
             return error
+        if request.session.get('voter_wallet_binding_challenge') != token:
+            return Response({'error': 'This wallet challenge was already used or belongs to another browser session.'}, status=status.HTTP_400_BAD_REQUEST)
         try:
             voter.wallet_address = wallet_address
             voter.save(update_fields=['wallet_address'])
         except IntegrityError:
             return Response({'error': 'This wallet is already linked to another voter profile.'}, status=status.HTTP_409_CONFLICT)
+        request.session.pop('voter_wallet_binding_challenge', None)
         return Response({'message': 'Wallet linked successfully. Review and confirm your vote again.'})

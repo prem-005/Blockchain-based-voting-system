@@ -42,6 +42,7 @@ export const BallotPage: React.FC = () => {
   const [notice, setNotice] = useState<string | null>(null);
   const [walletMismatch, setWalletMismatch] = useState(false);
   const [bindingWallet, setBindingWallet] = useState(false);
+  const [bindingStage, setBindingStage] = useState<'challenge' | 'signature' | 'confirm' | null>(null);
   const [hasAlreadyVoted, setHasAlreadyVoted] = useState(false);
   const [existingReceiptTx, setExistingReceiptTx] = useState<string | null>(null);
   const voteSubmissionLock = useRef(false);
@@ -98,6 +99,7 @@ export const BallotPage: React.FC = () => {
   const handleBindConnectedWallet = async () => {
     if (!account || !signer || !electionId || bindingWallet) return;
     setBindingWallet(true);
+    setBindingStage('challenge');
     setError(null);
     setNotice(null);
     try {
@@ -105,7 +107,9 @@ export const BallotPage: React.FC = () => {
         method: 'POST',
         body: JSON.stringify({ wallet_address: account, election_id: Number(electionId) }),
       });
+      setBindingStage('signature');
       const signature = await signer.signMessage(challenge.message);
+      setBindingStage('confirm');
       const result = await apiRequest('/voters/wallet-binding/confirm/', {
         method: 'POST',
         body: JSON.stringify({ challenge: challenge.challenge, signature }),
@@ -121,6 +125,7 @@ export const BallotPage: React.FC = () => {
       }
     } finally {
       setBindingWallet(false);
+      setBindingStage(null);
     }
   };
 
@@ -324,7 +329,10 @@ export const BallotPage: React.FC = () => {
               disabled={bindingWallet || !signer}
               className="px-3 py-2 rounded-lg bg-white border border-rose-300 font-bold text-rose-800 disabled:opacity-50"
             >
-              {bindingWallet ? 'Verify in MetaMask...' : 'Verify and link this wallet'}
+              {!bindingWallet && 'Verify and link this wallet'}
+              {bindingStage === 'challenge' && 'Preparing wallet verification...'}
+              {bindingStage === 'signature' && 'Sign in MetaMask...'}
+              {bindingStage === 'confirm' && 'Verifying and linking...'}
             </button>
           )}
         </div>
