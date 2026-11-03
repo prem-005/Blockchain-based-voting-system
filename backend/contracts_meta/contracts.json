@@ -1099,9 +1099,21 @@
       },
       {
         "inputs": [
-          { "internalType": "uint256", "name": "electionId", "type": "uint256" },
-          { "internalType": "uint256[]", "name": "constituencyIds", "type": "uint256[]" },
-          { "internalType": "bytes32[]", "name": "merkleRoots", "type": "bytes32[]" }
+          {
+            "internalType": "uint256",
+            "name": "electionId",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256[]",
+            "name": "constituencyIds",
+            "type": "uint256[]"
+          },
+          {
+            "internalType": "bytes32[]",
+            "name": "merkleRoots",
+            "type": "bytes32[]"
+          }
         ],
         "name": "setConstituencyMerkleRoots",
         "outputs": [],
@@ -2410,6 +2422,94 @@
             "internalType": "bool",
             "name": "",
             "type": "bool"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      }
+    ]
+  },
+  "EligibilityRootBatcher": {
+    "address": "0xabeE0f1404d3B76045255FD4fE3Fc930d71cB88B",
+    "abi": [
+      {
+        "inputs": [
+          {
+            "internalType": "address",
+            "name": "_administrator",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "_electionManager",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "_voterEligibility",
+            "type": "address"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "type": "constructor"
+      },
+      {
+        "inputs": [],
+        "name": "administrator",
+        "outputs": [
+          {
+            "internalType": "address",
+            "name": "",
+            "type": "address"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "electionManager",
+        "outputs": [
+          {
+            "internalType": "address",
+            "name": "",
+            "type": "address"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "electionId",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256[]",
+            "name": "constituencyIds",
+            "type": "uint256[]"
+          },
+          {
+            "internalType": "bytes32[]",
+            "name": "merkleRoots",
+            "type": "bytes32[]"
+          }
+        ],
+        "name": "publishRoots",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "voterEligibility",
+        "outputs": [
+          {
+            "internalType": "contract IEligibilityRootWriter",
+            "name": "",
+            "type": "address"
           }
         ],
         "stateMutability": "view",

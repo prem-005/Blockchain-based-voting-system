@@ -14,7 +14,7 @@ interface Web3ContextType {
   switchNetwork: () => Promise<void>;
   provider: BrowserProvider | null;
   signer: ethers.Signer | null;
-  getContract: (contractName: 'ElectionManager' | 'VoterEligibility' | 'LightVote' | 'ElectionResults', withSigner?: boolean) => Contract | null;
+  getContract: (contractName: 'ElectionManager' | 'VoterEligibility' | 'EligibilityRootBatcher' | 'LightVote' | 'ElectionResults', withSigner?: boolean) => Contract | null;
 }
 
 const Web3Context = createContext<Web3ContextType | undefined>(undefined);
@@ -181,7 +181,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const getContract = (contractName: 'ElectionManager' | 'VoterEligibility' | 'LightVote' | 'ElectionResults', withSigner = false): Contract | null => {
+  const getContract = (contractName: 'ElectionManager' | 'VoterEligibility' | 'EligibilityRootBatcher' | 'LightVote' | 'ElectionResults', withSigner = false): Contract | null => {
     const config = (contractsConfig as any)[contractName];
     const addressKey = `VITE_${contractName.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase()}_ADDRESS`;
     const address = (import.meta.env as any)[addressKey] || config?.address;

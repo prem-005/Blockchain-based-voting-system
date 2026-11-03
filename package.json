@@ -7,7 +7,8 @@
     "test": "hardhat test",
     "node": "hardhat node",
     "deploy": "hardhat run scripts/deploy.js --network localhost",
-    "deploy:local": "hardhat run scripts/deploy.js --network hardhat"
+    "deploy:local": "hardhat run scripts/deploy.js --network hardhat",
+    "deploy:eligibility-batcher": "hardhat run scripts/deploy_eligibility_root_batcher.js --network sepolia"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.0",
@@ -25,6 +26,7 @@
     "ethers": "^6.13.4",
     "hardhat": "^2.22.17",
     "hardhat-gas-reporter": "^1.0.8",
+    "solc": "0.8.24",
     "solidity-coverage": "^0.8.1",
     "typechain": "^8.3.0"
   }

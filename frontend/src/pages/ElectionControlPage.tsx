@@ -371,35 +371,54 @@ export const ElectionControlPage: React.FC = () => {
 
       const constituencyIds = changedRoots.map((root: any) => BigInt(root.constituency_id));
       const merkleRoots = changedRoots.map((root: any) => root.merkle_root);
-      const deployedCode = await eligibility.runner.provider.getCode(await eligibility.getAddress());
-      const batchSelector = eligibility.interface.getFunction('setConstituencyMerkleRoots')!.selector.slice(2).toLowerCase();
-      const supportsBatch = deployedCode.toLowerCase().includes(batchSelector);
-      if (supportsBatch) {
+      const batcher = getContract('EligibilityRootBatcher', true);
+      if (batcher) {
+        const [batcherAdmin, batcherManager, batcherEligibility] = await Promise.all([
+          batcher.administrator(),
+          batcher.electionManager(),
+          batcher.voterEligibility(),
+        ]);
+        if (String(batcherAdmin).toLowerCase() !== account.toLowerCase()) {
+          throw new Error('The configured root batcher is assigned to a different administrator wallet.');
+        }
+        if (String(batcherManager).toLowerCase() !== configuredManagerAddress ||
+            String(batcherEligibility).toLowerCase() !== String(await eligibility.getAddress()).toLowerCase()) {
+          throw new Error('The configured root batcher points to different election contracts. Update the contract configuration.');
+        }
         setStatusMsg(`Publishing ${changedRoots.length} eligibility roots in one transaction...`);
-        const tx = await eligibility.setConstituencyMerkleRoots(
-          BigInt(electionId),
-          constituencyIds,
-          merkleRoots
-        );
+        const tx = await batcher.publishRoots(BigInt(electionId), constituencyIds, merkleRoots);
         await tx.wait();
       } else {
-        // The deployed eligibility contract predates the batch setter. Use its
-        // original method so administrators can publish roots without redeploying.
-        for (let i = 0; i < changedRoots.length; i++) {
-          setStatusMsg(`This deployed contract needs individual root updates (${i + 1} of ${changedRoots.length})...`);
-          try {
-            const tx = await eligibility.setConstituencyMerkleRoot(
-              BigInt(electionId),
-              constituencyIds[i],
-              merkleRoots[i]
-            );
-            await tx.wait();
-          } catch (legacyError: any) {
-            const detail = `${legacyError?.shortMessage || ''} ${legacyError?.reason || ''} ${legacyError?.message || ''}`;
-            if (/missing revert data|no data present/i.test(detail)) {
-              throw new Error('The deployed VoterEligibility contract rejected the root update without a reason. Confirm MetaMask is on Sepolia, this wallet is authorized on the contract’s linked ElectionManager, and it has Sepolia ETH for gas.');
+        const deployedCode = await eligibility.runner.provider.getCode(await eligibility.getAddress());
+        const batchSelector = eligibility.interface.getFunction('setConstituencyMerkleRoots')!.selector.slice(2).toLowerCase();
+        const supportsBatch = deployedCode.toLowerCase().includes(batchSelector);
+        if (supportsBatch) {
+          setStatusMsg(`Publishing ${changedRoots.length} eligibility roots in one transaction...`);
+          const tx = await eligibility.setConstituencyMerkleRoots(
+            BigInt(electionId),
+            constituencyIds,
+            merkleRoots
+          );
+          await tx.wait();
+        } else {
+          // The deployed eligibility contract predates the batch setter. Use its
+          // original method so administrators can publish roots without redeploying.
+          for (let i = 0; i < changedRoots.length; i++) {
+            setStatusMsg(`This deployed contract needs individual root updates (${i + 1} of ${changedRoots.length})...`);
+            try {
+              const tx = await eligibility.setConstituencyMerkleRoot(
+                BigInt(electionId),
+                constituencyIds[i],
+                merkleRoots[i]
+              );
+              await tx.wait();
+            } catch (legacyError: any) {
+              const detail = `${legacyError?.shortMessage || ''} ${legacyError?.reason || ''} ${legacyError?.message || ''}`;
+              if (/missing revert data|no data present/i.test(detail)) {
+                throw new Error('The deployed VoterEligibility contract rejected the root update without a reason. Confirm MetaMask is on Sepolia, this wallet is authorized on the contract’s linked ElectionManager, and it has Sepolia ETH for gas.');
+              }
+              throw legacyError;
             }
-            throw legacyError;
           }
         }
       }
