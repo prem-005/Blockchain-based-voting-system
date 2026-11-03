@@ -13,14 +13,20 @@ services:
       - ./backend/media:/app/media
     environment:
       - DJANGO_DEBUG=False
-      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-lightvote-prod-secret-replace-in-env}
-      - DJANGO_ALLOWED_HOSTS=*
-      - CORS_ALLOWED_ORIGINS=http://localhost,http://localhost:5173,http://localhost:80
-      - CSRF_TRUSTED_ORIGINS=http://localhost,http://localhost:5173,http://localhost:80
-      - HARDHAT_RPC_URL=${HARDHAT_RPC_URL:-http://127.0.0.1:8545}
-      - CHAIN_ID=${CHAIN_ID:-31337}
-      - BALLOT_NULLIFIER_SECRET=${BALLOT_NULLIFIER_SECRET:-nullifier-secret-replace-in-env}
-      - EMAIL_BACKEND_TYPE=console
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY to a private random value}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost}
+      - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS:-http://localhost}
+      - HARDHAT_RPC_URL=${HARDHAT_RPC_URL:?Set HARDHAT_RPC_URL to the intended chain RPC}
+      - CHAIN_ID=${CHAIN_ID:?Set CHAIN_ID to match the configured contract deployment}
+      - BALLOT_NULLIFIER_SECRET=${BALLOT_NULLIFIER_SECRET:?Set BALLOT_NULLIFIER_SECRET to a separate private random value}
+      - EMAIL_BACKEND_TYPE=${EMAIL_BACKEND_TYPE:?Configure an email provider}
+      - EMAIL_HOST=${EMAIL_HOST:-smtp.gmail.com}
+      - EMAIL_PORT=${EMAIL_PORT:-587}
+      - EMAIL_USE_TLS=${EMAIL_USE_TLS:-True}
+      - EMAIL_HOST_USER=${EMAIL_HOST_USER:?Set EMAIL_HOST_USER}
+      - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD:?Set EMAIL_HOST_PASSWORD}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL:?Set DEFAULT_FROM_EMAIL}
 
   frontend:
     build:
@@ -28,8 +34,8 @@ services:
       dockerfile: frontend/Dockerfile
       args:
         VITE_API_BASE_URL: /api
-        VITE_RPC_URL: ${VITE_RPC_URL:-http://127.0.0.1:8545}
-        VITE_CHAIN_ID: ${VITE_CHAIN_ID:-31337}
+        VITE_RPC_URL: ${VITE_RPC_URL:?Set VITE_RPC_URL to the intended chain RPC}
+        VITE_CHAIN_ID: ${VITE_CHAIN_ID:?Set VITE_CHAIN_ID to match the configured contract deployment}
         VITE_CHAIN_NAME: ${VITE_CHAIN_NAME:-LightVote Chain}
     restart: unless-stopped
     ports:

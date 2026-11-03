@@ -1,9 +1,14 @@
 from rest_framework.authentication import SessionAuthentication
+from django.http import JsonResponse
 
-class CsrfExemptSessionAuthentication(SessionAuthentication):
-    """
-    Custom SessionAuthentication that skips CSRF enforcement for REST API calls
-    originating from authorized SPA clients (handled by CORS_ALLOWED_ORIGINS and credentials).
-    """
+
+def csrf_failure(request, reason=''):
+    return JsonResponse(
+        {'error': 'CSRF validation failed. Refresh the page and try again.'},
+        status=403,
+    )
+
+class CsrfProtectedSessionAuthentication(SessionAuthentication):
+    """Session authentication with Django's normal CSRF checks enabled."""
     def enforce_csrf(self, request):
-        return  # To not perform the csrf check
+        return super().enforce_csrf(request)

@@ -201,6 +201,17 @@ describe("LightVote Smart Contract Suite", function () {
       expect(cand.isActive).to.be.true;
     });
 
+    it("should reject zero constituency IDs and elections missing from ElectionManager", async function () {
+      const candidateRef = ethers.encodeBytes32String("CAND-INVALID");
+      await expect(lightVote.registerCandidate(
+        ELECTION_2026_ID, DISTRICT_TRICHY, 0, candidateRef, "Candidate", "Party"
+      )).to.be.revertedWith("Invalid constituency ID");
+
+      await expect(lightVote.registerCandidate(
+        ELECTION_2027_ID, DISTRICT_TRICHY, CONST_MANACHANALLUR, candidateRef, "Candidate", "Party"
+      )).to.be.revertedWith("Election not found");
+    });
+
     it("should allow a district administrator to register candidates only in the assigned district", async function () {
       const candidateRef = ethers.encodeBytes32String("DISTRICT-CAND-001");
       await expect(lightVote.connect(districtAdmin).registerCandidate(

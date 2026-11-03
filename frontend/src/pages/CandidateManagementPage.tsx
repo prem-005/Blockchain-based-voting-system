@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { ethers } from 'ethers';
 import { apiRequest } from '../api/client';
+import { apiRequestAllPages } from '../services/apiClient';
 import { useWeb3 } from '../context/Web3Context';
 import { Candidate, Election, Party, District, Constituency } from '../types';
 import { apiOrigin } from '../services/apiClient';
@@ -71,8 +72,7 @@ export const CandidateManagementPage: React.FC = () => {
     if (selectedConstituency) url += `&constituency_id=${selectedConstituency}`;
     if (assignedDistrictId != null) url += `&district_id=${assignedDistrictId}`;
     try {
-      const data = await apiRequest(url);
-      setCandidates(data.results || data || []);
+      setCandidates(await apiRequestAllPages<Candidate>(url));
     } catch (e: any) {
       setError(e.message || 'Failed to load candidates.');
     } finally {

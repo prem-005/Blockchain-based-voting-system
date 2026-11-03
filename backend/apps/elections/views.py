@@ -99,8 +99,11 @@ class ElectionDetailView(generics.RetrieveAPIView):
                 {'error': 'This election exists on the active chain. Cancel it on-chain instead of removing it.'},
                 status=status.HTTP_409_CONFLICT,
             )
-        # Candidates and receipts use CASCADE, so removing a legacy record
-        # also cleans up its app-only candidates and receipts.
+        if election.candidates.exists() or election.receipts.exists():
+            return Response(
+                {'error': 'This election has candidate or vote history and cannot be removed. Preserve the record and reconcile it with the active chain.'},
+                status=status.HTTP_409_CONFLICT,
+            )
         election.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 

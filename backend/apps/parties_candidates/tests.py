@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
+from unittest.mock import patch
 
 from apps.elections.models import Constituency, District, Election, State
 from apps.parties_candidates.models import Candidate, Party
@@ -30,6 +31,7 @@ class CandidateDistrictScopeTests(TestCase):
             status=Election.Status.ACTIVE,
         )
         party = Party.objects.create(name='Test Party', abbreviation='TST', symbol_name='Star')
+        self.new_party = Party.objects.create(name='Other Party', abbreviation='OTH', symbol_name='Moon')
         self.trichy_candidate = Candidate.objects.create(
             candidate_id=1, candidate_ref='trichy-candidate', name='Trichy Candidate', party=party,
             election=self.election, district=self.trichy, constituency=self.trichy_constituency,
@@ -43,6 +45,28 @@ class CandidateDistrictScopeTests(TestCase):
         )
         self.central_admin = User.objects.create_user(email='central@example.test', role=User.Role.CENTRAL_ADMIN)
         self.client = APIClient()
+
+    def candidate_payload(self):
+        return {
+            'name': 'API Candidate',
+            'party': self.new_party.pk,
+            'election': self.election.pk,
+            'district': self.trichy.pk,
+            'constituency': self.trichy_constituency.pk,
+            'registration_tx_hash': '0x' + '9' * 64,
+        }
+
+    def verified_candidate(self, constituency_id=None):
+        return {
+            'candidate_id': 99,
+            'candidate_ref': '0x' + 'a' * 64,
+            'name': 'API Candidate',
+            'party_abbreviation': 'OTH',
+            'election_id': self.election.pk,
+            'district_id': self.trichy.pk,
+            'constituency_id': constituency_id or self.trichy_constituency.pk,
+            'tx_hash': '0x' + '9' * 64,
+        }
 
     def test_district_admin_list_is_limited_to_assigned_district(self):
         self.client.force_authenticate(self.district_admin)
@@ -68,3 +92,25 @@ class CandidateDistrictScopeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         items = response.data.get('results', response.data)
         self.assertEqual({item['id'] for item in items}, {self.trichy_candidate.id, self.chennai_candidate.id})
+
+    @patch('apps.parties_candidates.serializers.get_verified_candidate_registration')
+    def test_central_admin_can_save_a_verified_on_chain_candidate(self, verify_registration):
+        verify_registration.return_value = self.verified_candidate()
+        self.client.force_authenticate(self.central_admin)
+
+        response = self.client.post('/api/candidates/candidates/', self.candidate_payload(), format='json')
+
+        self.assertEqual(response.status_code, 201, response.data)
+        candidate = Candidate.objects.get(candidate_id=99)
+        self.assertEqual(candidate.constituency_id, self.trichy_constituency.pk)
+        self.assertEqual(candidate.on_chain_tx_hash, '0x' + '9' * 64)
+
+    @patch('apps.parties_candidates.serializers.get_verified_candidate_registration')
+    def test_candidate_chain_constituency_must_match_database_selection(self, verify_registration):
+        verify_registration.return_value = self.verified_candidate(constituency_id=self.chennai_constituency.pk)
+        self.client.force_authenticate(self.central_admin)
+
+        response = self.client.post('/api/candidates/candidates/', self.candidate_payload(), format='json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Candidate.objects.filter(candidate_id=99).exists())

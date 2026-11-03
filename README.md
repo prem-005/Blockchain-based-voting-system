@@ -56,22 +56,18 @@ LightVote is an electronic voting research prototype built with React, Django RE
 2. **Nullifier enforcement**: An election-scoped nullifier prevents a second accepted vote for the same credential.
 3. **Public candidate choice**: `castVote` calldata contains the candidate ID. The omission from `VoteRecorded` events does not hide this input.
 4. **Verifiable receipts**:
-   - Each voter receives an SHA-256 digest receipt containing election timestamp, block number, and transaction hash. The voter can independently verify that their receipt exists in the blockchain blocks without exposing who they voted for.
+   - The receipt can verify that a transaction was accepted, but the public transaction calldata contains the selected candidate ID and sender address. The current system cannot promise that a voter's choice remains unlinkable.
 
 ---
 
-## 3. Pre-Configured Accounts & Credentials
+## 3. Local Development Accounts
 
-### Central Election Administrator
-- **Email**: `admin@lightvote.org`
-- **Password**: `Admin@123456`
+### Local Development Seed Administrators
+- Seed account emails default to `admin@lightvote.org` and `district.trichy@lightvote.org`.
+- Set `LIGHTVOTE_CENTRAL_ADMIN_PASSWORD` and `LIGHTVOTE_DISTRICT_ADMIN_PASSWORD` before running `seed_initial_data` to create missing local seed accounts. Never use these development accounts in production.
 - **Capabilities**: Create elections, set schedules, open/close elections, publish final results, view research benchmarks.
 
-### District Election Administrator (Tiruchirappalli)
-- **Email**: `district.trichy@lightvote.org`
-- **Password**: `District@123456`
-- **Assigned District**: Tiruchirappalli (District ID 29, Manachanallur AC-141)
-- **Capabilities**: Review and approve/reject voter applications, manage political parties and candidates in assigned jurisdiction.
+The seed command now preserves existing catalog, election, and candidate rows. It only creates missing seed rows. District and constituency data changes require a deliberate data update; rerunning the seed command will not rewrite existing assignments.
 
 ### Default Local Blockchain Accounts (Hardhat Chain ID: 31337)
 - **RPC URL**: `http://127.0.0.1:8545`
@@ -140,20 +136,20 @@ npm run dev
 
 ### Run Solidity Smart Contract Tests (Hardhat)
 ```powershell
-cd d:\blockchain
+cd <repository-root>
 npm test
 ```
-*All 11 unit & integration tests pass with 100% coverage of voting, access controls, double-vote prevention, and tally verification.*
+This runs the Solidity unit and integration suite. No coverage percentage is claimed.
 
 ### Run Django Backend Unit Tests
 ```powershell
-cd d:\blockchain\backend
-.\.venv\Scripts\python.exe manage.py test apps.voters
+cd <repository-root>\backend
+.\.venv\Scripts\python.exe manage.py test
 ```
 
 ### Production Frontend Build Check
 ```powershell
-cd d:\blockchain\frontend
+cd <repository-root>\frontend
 npm run build
 ```
 
@@ -197,7 +193,9 @@ All routes are prefixed with `/api/`. Session-authenticated writes use the sessi
 
 ## 9. Environment and Local Setup
 
-Environment variables are documented in `backend/.env.example` and `frontend/.env.example`. Backend settings include `DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, CORS/CSRF origins, `SQLITE_PATH`, email configuration, `HARDHAT_RPC_URL`, `CHAIN_ID`, and `BALLOT_NULLIFIER_SECRET`. Frontend variables include `VITE_API_BASE_URL`, `VITE_API_TIMEOUT_MS`, `VITE_RPC_URL`, `VITE_CHAIN_ID`, and optional contract-address overrides. Contract deployment writes ABIs and addresses to `frontend/src/contracts/contracts.json` and `backend/contracts_meta/contracts.json`.
+Environment variables are documented in `backend/.env.example` and `frontend/.env.example`. Production must set a private `DJANGO_SECRET_KEY`, `DJANGO_DEBUG=False`, explicit `DJANGO_ALLOWED_HOSTS`, exact frontend origins in both `CORS_ALLOWED_ORIGINS` and `CSRF_TRUSTED_ORIGINS`, a private `BALLOT_NULLIFIER_SECRET`, `VITE_API_BASE_URL`, the intended RPC and chain ID, contract addresses, and a real email provider. Do not use the local console mail backend or local Hardhat accounts in production. Contract deployment writes ABIs and addresses to `frontend/src/contracts/contracts.json` and `backend/contracts_meta/contracts.json`.
+
+The API uses session cookies and CSRF checks. The frontend gets a CSRF token from `/api/auth/csrf/`; production CORS and CSRF origins must name the exact deployed frontend origin. Wildcard Vercel or Render tenant origins are not trusted.
 
 For a fresh checkout, install root and frontend npm dependencies (`npm install` in each directory), create/activate a backend virtual environment and install `backend/requirements.txt`, copy the example env files, then run:
 
@@ -228,7 +226,7 @@ npm run dev
 
 The frontend is served at `http://127.0.0.1:5173`. Run `npm run build` from `frontend`, `npm test` from the repository root, and `..\.venv\Scripts\python.exe manage.py test` from `backend` to check the build and test suites.
 
-Use seed users only on a local development instance and change their credentials. Root synchronization is an explicit administrator action after approved voters are present. Freshly deployed contracts start with empty eligibility roots; votes are rejected until roots are synced.
+Use seed users only on a local development instance. Before creating missing seed administrators, set `LIGHTVOTE_CENTRAL_ADMIN_PASSWORD` and `LIGHTVOTE_DISTRICT_ADMIN_PASSWORD` in the environment; the command does not print or embed passwords. Root synchronization is an explicit administrator action after approved voters are present. Freshly deployed contracts start with empty eligibility roots; votes are rejected until roots are synced.
 
 ---
 

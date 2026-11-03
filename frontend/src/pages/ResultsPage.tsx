@@ -21,10 +21,12 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { apiRequest } from '../api/client';
+import { apiRequestAllPages } from '../services/apiClient';
 import { useWeb3 } from '../context/Web3Context';
 import { Election, Candidate } from '../types';
 import { GovernmentEmblem } from '../components/GovernmentEmblem';
 import { PartySymbol } from '../components/PartySymbol';
+import contractsConfig from '../contracts/contracts.json';
 
 export const ResultsPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -115,8 +117,9 @@ export const ResultsPage: React.FC = () => {
         const published = Boolean(officialResult && officialResult[0]);
         setOnChainPublished(published);
         if (published && officialResult) {
-          const certHash = officialResult.resultHash || officialResult[3] || '0x' + Array.from({length: 64}, () => Math.floor(Math.random()*16).toString(16)).join('');
-          setOfficialCertHash(typeof certHash === 'string' ? certHash : '0xCERTIFIED_LEDGER_PROOF_ON_CHAIN');
+          const certHash = officialResult.resultsMerkleRoot || officialResult[3];
+          const normalizedRoot = typeof certHash === 'string' ? certHash : '';
+          setOfficialCertHash(/^0x0{64}$/i.test(normalizedRoot) ? '' : normalizedRoot);
         }
 
         if (published && candidatesForElection.length > 0 && electionResults) {
@@ -144,10 +147,10 @@ export const ResultsPage: React.FC = () => {
       }
     };
 
-    apiRequest(`/candidates/candidates/?election_id=${selectedElectionId}`)
+    apiRequestAllPages<Candidate>(`/candidates/candidates/?election_id=${selectedElectionId}`)
       .then((candData) => {
         if (!active) return;
-        candidatesForElection = candData.results || candData || [];
+        candidatesForElection = candData;
         setCandidates(candidatesForElection);
         void refreshTallies();
       })
@@ -445,7 +448,7 @@ export const ResultsPage: React.FC = () => {
               Candidate Vote Tabulation & Standings
             </h2>
             <p className="text-slate-500 text-xs mt-0.5">
-              Ranked tally computed directly from cryptographic ballot receipts and consensus certification.
+              Candidate totals are read from the on-chain result snapshot after publication.
             </p>
           </div>
           <span className="text-xs bg-slate-100 text-slate-700 px-3 py-1 rounded-full font-semibold border border-slate-200">
@@ -665,18 +668,18 @@ export const ResultsPage: React.FC = () => {
           <h3>Cryptographic Audit & Gazette Verification</h3>
         </div>
         <p className="text-slate-600 text-xs leading-relaxed">
-          Every ballot counted on this page corresponds to a unique non-reversible nullifier committed to the <b>LightVote</b> contract. Results can be verified independently against the block ledger by matching receipt hashes.
+          The on-chain nullifier blocks repeat use of the same credential. Candidate choices remain visible in public transaction calldata, so the current protocol does not provide ballot secrecy. The result commitment is shown only when a nonzero root was published.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono bg-slate-50 p-4 rounded-2xl border border-slate-200">
           <div>
             <span className="text-slate-400 block text-[10px] font-sans font-bold uppercase">Contract Address</span>
-            <span className="text-slate-800 font-semibold break-all">0xcAd799F4747D576626cc6257a570FBe1Be009809</span>
+            <span className="text-slate-800 font-semibold break-all">{(contractsConfig as any).LightVote?.address || 'Not configured'}</span>
           </div>
           <div>
             <span className="text-slate-400 block text-[10px] font-sans font-bold uppercase">Certification Root Hash</span>
             <span className="text-slate-800 font-semibold break-all">
-              {officialCertHash || '0x4f88b5608d4b317cb58bfd687a718c575d506a73c1fa771a399b66bb24976ea2'}
+              {officialCertHash || 'No nonzero results commitment was published.'}
             </span>
           </div>
         </div>

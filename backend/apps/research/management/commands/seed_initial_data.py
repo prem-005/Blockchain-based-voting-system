@@ -1,6 +1,7 @@
+import os
 from datetime import timedelta
 from django.core.management import call_command
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 from apps.authentication.models import User
 from apps.elections.models import State, District, Constituency, Election
@@ -11,6 +12,15 @@ class Command(BaseCommand):
     help = "Seeds initial Central Admin, sample Parties, 2026/2027 Elections, and Research Benchmarks"
 
     def handle(self, *args, **kwargs):
+        admin_email = os.getenv('LIGHTVOTE_CENTRAL_ADMIN_EMAIL', 'admin@lightvote.org').strip().lower()
+        dadmin_email = os.getenv('LIGHTVOTE_DISTRICT_ADMIN_EMAIL', 'district.trichy@lightvote.org').strip().lower()
+        admin_password = os.getenv('LIGHTVOTE_CENTRAL_ADMIN_PASSWORD')
+        dadmin_password = os.getenv('LIGHTVOTE_DISTRICT_ADMIN_PASSWORD')
+        if not User.objects.filter(email__iexact=admin_email).exists() and not admin_password:
+            raise CommandError('Set LIGHTVOTE_CENTRAL_ADMIN_PASSWORD before creating the seed central administrator.')
+        if not User.objects.filter(email__iexact=dadmin_email).exists() and not dadmin_password:
+            raise CommandError('Set LIGHTVOTE_DISTRICT_ADMIN_PASSWORD before creating the seed district administrator.')
+
         self.stdout.write("Loading Tamil Nadu administrative dataset (districts & constituencies)...")
         try:
             call_command("load_tamil_nadu_data")
@@ -20,7 +30,6 @@ class Command(BaseCommand):
         self.stdout.write("Seeding LightVote initial database records...")
 
         # 1. Central Admin
-        admin_email = "admin@lightvote.org"
         admin_user, created = User.objects.get_or_create(
             email=admin_email,
             defaults={
@@ -34,12 +43,11 @@ class Command(BaseCommand):
             }
         )
         if created:
-            admin_user.set_password("Admin@123456")
+            admin_user.set_password(admin_password)
             admin_user.save()
-            self.stdout.write(self.style.SUCCESS(f"Created Central Admin user: {admin_email} / Admin@123456"))
+            self.stdout.write(self.style.SUCCESS(f"Created Central Admin user: {admin_email}"))
 
         # 2. District Admin for Tiruchirappalli (District ID 29)
-        dadmin_email = "district.trichy@lightvote.org"
         dadmin_user, d_created = User.objects.get_or_create(
             email=dadmin_email,
             defaults={
@@ -52,9 +60,9 @@ class Command(BaseCommand):
             }
         )
         if d_created:
-            dadmin_user.set_password("District@123456")
+            dadmin_user.set_password(dadmin_password)
             dadmin_user.save()
-            self.stdout.write(self.style.SUCCESS(f"Created District Admin user: {dadmin_email} / District@123456"))
+            self.stdout.write(self.style.SUCCESS(f"Created District Admin user: {dadmin_email}"))
 
         # 3. Political Parties
         parties_data = [
@@ -67,7 +75,7 @@ class Command(BaseCommand):
 
         party_objs = {}
         for name, abbr, sym, col in parties_data:
-            p, _ = Party.objects.update_or_create(
+            p, _ = Party.objects.get_or_create(
                 abbreviation=abbr,
                 defaults={"name": name, "symbol_name": sym, "color_hex": col, "is_active": True}
             )
@@ -82,7 +90,7 @@ class Command(BaseCommand):
         # 5. Elections (2026 and 2027)
         now = timezone.now()
         # 2026 Election (Upcoming by default - starts only when Admin clicks Start Voting)
-        elec_2026, _ = Election.objects.update_or_create(
+        elec_2026, _ = Election.objects.get_or_create(
             id=202601,
             defaults={
                 "name": "Tamil Nadu 17th Legislative Assembly General Election 2026",
@@ -96,7 +104,7 @@ class Command(BaseCommand):
         )
 
         # 2027 By-Election (Upcoming)
-        elec_2027, _ = Election.objects.update_or_create(
+        elec_2027, _ = Election.objects.get_or_create(
             id=202701,
             defaults={
                 "name": "Tamil Nadu Assembly General / By-Election 2027",
@@ -118,7 +126,7 @@ class Command(BaseCommand):
                 ("Dr. K. Srinivasan", "BJP", 7, "0x4040404040404040404040404040404040404040404040404040404040404040"),
             ]
             for c_name, party_abbr, cid, cref in candidates_data:
-                Candidate.objects.update_or_create(
+                Candidate.objects.get_or_create(
                     election=elec_2026,
                     constituency=manachanallur,
                     name=c_name,

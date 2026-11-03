@@ -370,7 +370,7 @@ export const BallotPage: React.FC = () => {
             </div>
 
             <p className="text-[11px] text-[#64748B]">
-              This vote is immutable and recorded on the blockchain with zero ballot disclosure.
+              This vote is recorded on a public blockchain. The selected candidate ID is visible in transaction data, so this prototype does not provide ballot secrecy.
             </p>
 
             <div className="flex gap-2 pt-2">

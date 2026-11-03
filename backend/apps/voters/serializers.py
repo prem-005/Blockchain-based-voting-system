@@ -19,7 +19,7 @@ class VoterRegistrationSerializer(serializers.ModelSerializer):
 
     def validate_email(self, value):
         val = value.lower().strip()
-        if User.objects.filter(email=val).exists():
+        if User.objects.filter(email__iexact=val).exists():
             raise serializers.ValidationError("An account with this email address already exists.")
         return val
 

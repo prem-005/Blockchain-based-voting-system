@@ -13,8 +13,9 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 from .models import VoteReceipt
 from .serializers import VoteReceiptSerializer, RecordReceiptSerializer
-from apps.elections.models import Election, Constituency
+from apps.elections.models import Constituency
 from .blockchain import get_verified_vote_transaction, get_web3, load_contract_config
+from apps.voters.eligibility import derive_nullifier
 
 class RecordVoteReceiptView(APIView):
     permission_classes = [IsAuthenticated]
@@ -30,13 +31,10 @@ class RecordVoteReceiptView(APIView):
         tx_hash = serializer.validated_data['tx_hash'].lower()
 
         voter = getattr(request.user, 'voter_profile', None)
-        if not voter or voter.status != 'APPROVED' or not request.user.is_verified:
-            return Response({'error': 'An approved, email-verified voter account is required.'}, status=status.HTTP_403_FORBIDDEN)
+        if not voter or not request.user.is_verified:
+            return Response({'error': 'A verified voter account is required to record a receipt.'}, status=status.HTTP_403_FORBIDDEN)
         if voter.constituency_id != constituency.pk:
             return Response({'error': 'Receipt constituency does not match your approved voter profile.'}, status=status.HTTP_403_FORBIDDEN)
-        if election.status != Election.Status.ACTIVE or not election.is_currently_open:
-            return Response({'error': 'The election is not open according to the backend election schedule.'}, status=status.HTTP_409_CONFLICT)
-
         try:
             chain_data = get_verified_vote_transaction(tx_hash)
         except ConnectionError as error:
@@ -52,6 +50,9 @@ class RecordVoteReceiptView(APIView):
                 chain_data['constituency_id'] != constituency.pk or chain_data['call_constituency_id'] != constituency.pk or
                 chain_data['nullifier_hash'].lower() != nullifier_hash or chain_data['call_nullifier_hash'].lower() != nullifier_hash):
             return Response({'error': 'Submitted receipt fields do not match the confirmed vote transaction.'}, status=status.HTTP_400_BAD_REQUEST)
+        expected_nullifier = '0x' + derive_nullifier(request.user.pk, election.pk).hex()
+        if nullifier_hash != expected_nullifier.lower():
+            return Response({'error': 'This vote transaction does not belong to the authenticated voter account.'}, status=status.HTTP_403_FORBIDDEN)
 
         try:
             candidate = get_web3().eth.contract(
@@ -60,7 +61,9 @@ class RecordVoteReceiptView(APIView):
             ).functions.getCandidate(chain_data['candidate_id']).call()
         except Exception:
             return Response({'error': 'The vote transaction refers to a candidate that cannot be verified.'}, status=status.HTTP_400_BAD_REQUEST)
-        if int(candidate[4]) != election.pk or int(candidate[6]) != constituency.pk or not candidate[7]:
+        # A successful castVote transaction proves the candidate was active
+        # at that block. Current active status may have changed afterward.
+        if int(candidate[4]) != election.pk or int(candidate[6]) != constituency.pk:
             return Response({'error': 'Candidate election or constituency does not match this receipt.'}, status=status.HTTP_400_BAD_REQUEST)
 
         receipt_ref = '0x' + hashlib.sha256(
@@ -69,8 +72,8 @@ class RecordVoteReceiptView(APIView):
         try:
             with transaction.atomic():
                 voter = type(voter).objects.select_for_update().get(pk=voter.pk)
-                if voter.status != 'APPROVED' or not request.user.is_verified:
-                    return Response({'error': 'Voter approval changed before the receipt was recorded.'}, status=status.HTTP_409_CONFLICT)
+                if not request.user.is_verified:
+                    return Response({'error': 'Voter email verification changed before the receipt was recorded.'}, status=status.HTTP_409_CONFLICT)
                 if VoteReceipt.objects.filter(election=election, user=request.user).exists():
                     return Response({'error': 'A vote receipt is already recorded for your account in this election.'}, status=status.HTTP_409_CONFLICT)
                 receipt = VoteReceipt.objects.create(
@@ -240,9 +243,8 @@ class DownloadReceiptPDFView(APIView):
         # Privacy & Verification Notice
         notice_text = (
             "<b>Prototype privacy limitation:</b> This receipt omits your name and voter ID. "
-            "However, the current vote transaction exposes the selected candidate ID in public calldata. "
-            "The anonymous nullifier hash proves your vote was accepted and counted once on the blockchain, "
-            "allowing you to independently verify inclusion in the public ledger without compromising ballot privacy."
+            "The public vote transaction exposes both the selected candidate ID in calldata and the sender wallet. "
+            "The nullifier can verify that a credential was used once, but this protocol does not provide ballot secrecy."
         )
         story.append(Paragraph(notice_text, body_style))
         story.append(Spacer(1, 15))

@@ -142,7 +142,7 @@ export const ExplorerPage: React.FC = () => {
               <span>Confirmed Voting Transactions</span>
             </h2>
             <p className="text-slate-400 text-xs">
-              Every ballot generates an anonymous transaction record on LightVote.sol.
+              Every ballot generates a public transaction record on LightVote.sol. The transaction calldata reveals the selected candidate ID.
             </p>
           </div>
 

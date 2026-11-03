@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sliders, Play, Square, CheckCircle2, Archive, Clock, ShieldCheck, Plus, XCircle } from 'lucide-react';
 import { apiRequest } from '../api/client';
+import { apiRequestAllPages } from '../services/apiClient';
 import { useWeb3 } from '../context/Web3Context';
 import { Election } from '../types';
 
@@ -198,13 +199,33 @@ export const ElectionControlPage: React.FC = () => {
           const electionResults = getContract('ElectionResults', true);
           if (!electionResults) throw new Error('Election Results contract is unavailable.');
 
-          const candidateData = await apiRequest(`/candidates/candidates/?election_id=${electionId}`);
-          const candidates = candidateData.results || candidateData || [];
-          const candidateIds = candidates
-            .map((candidate: any) => Number(candidate.candidate_id || candidate.id))
-            .filter((id: number) => Number.isSafeInteger(id) && id > 0);
-          if (candidateIds.length === 0) {
-            throw new Error('No candidate IDs are registered for this election.');
+          const candidates = await apiRequestAllPages<any>(`/candidates/candidates/?election_id=${electionId}`);
+          if (candidates.some((candidate: any) => !candidate.candidate_id)) {
+            throw new Error('Every candidate must have a blockchain candidate ID before results can be published. Reconcile missing candidate records first.');
+          }
+          const candidateIds = candidates.map((candidate: any) => Number(candidate.candidate_id));
+          if (candidateIds.length === 0 || candidateIds.some((id: number) => !Number.isSafeInteger(id) || id <= 0) || new Set(candidateIds).size !== candidateIds.length) {
+            throw new Error('The election candidate list contains missing or duplicate blockchain candidate IDs. Reconcile the records before publishing results.');
+          }
+          const lightVote = getContract('LightVote', false);
+          if (!lightVote) throw new Error('LightVote is unavailable on the connected network.');
+          for (let offset = 0; offset < candidates.length; offset += 20) {
+            const batch = candidates.slice(offset, offset + 20);
+            const chainCandidates = await Promise.all(batch.map((candidate: any) =>
+              lightVote.getCandidate(BigInt(candidate.candidate_id))
+            ));
+            const mismatched = batch.some((candidate: any, index: number) => {
+              const chainCandidate = chainCandidates[index];
+              return Number(chainCandidate[0]) !== Number(candidate.candidate_id) ||
+                Number(chainCandidate[4]) !== electionId ||
+                Number(chainCandidate[5]) !== Number(candidate.district) ||
+                Number(chainCandidate[6]) !== Number(candidate.constituency) ||
+                String(chainCandidate[2]).trim() !== String(candidate.name).trim() ||
+                String(chainCandidate[3]).toLowerCase() !== String(candidate.party_details?.abbreviation || '').toLowerCase();
+            });
+            if (mismatched) {
+              throw new Error('A candidate record does not match its on-chain identity. Reconcile the candidate roster before publishing results.');
+            }
           }
 
           const tx = await electionResults.publishResults(
@@ -260,17 +281,23 @@ export const ElectionControlPage: React.FC = () => {
       await ensureChainAdmin(getContract('ElectionManager', true));
       const data = await apiRequest(`/voters/admin/eligibility-roots/?election_id=${electionId}`);
       const roots = data.roots || [];
-      if (!roots.length) throw new Error('There are no approved, email-verified voters to publish yet.');
+      if (!roots.length) throw new Error('There are no constituencies in the election state catalog to synchronize.');
 
+      let updatedCount = 0;
       for (const root of roots) {
+        const electionKey = BigInt(electionId);
+        const constituencyKey = BigInt(root.constituency_id);
+        const currentRoot = await eligibility.constituencyMerkleRoots(electionKey, constituencyKey);
+        if (String(currentRoot).toLowerCase() === String(root.merkle_root).toLowerCase()) continue;
         const tx = await eligibility.setConstituencyMerkleRoot(
-          BigInt(electionId),
-          BigInt(root.constituency_id),
+          electionKey,
+          constituencyKey,
           root.merkle_root
         );
         await tx.wait();
+        updatedCount += 1;
       }
-      setStatusMsg(`Published ${roots.length} eligibility root(s) for election #${electionId}.`);
+      setStatusMsg(`Updated ${updatedCount} of ${roots.length} eligibility roots for election #${electionId}; unchanged roots were skipped.`);
     } catch (err: any) {
       setStatusMsg(`Eligibility root sync failed: ${friendlyError(err)}`);
     } finally {

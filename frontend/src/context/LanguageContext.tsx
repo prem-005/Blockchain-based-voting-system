@@ -86,7 +86,7 @@ const translations: Record<Language, Record<string, string>> = {
     'help.q2': 'Can I vote immediately after registering?',
     'help.a2': 'No. For election integrity, all voter registrations must be approved by the designated District Administrator before you can access the ballot and cast your vote.',
     'help.q3': 'How does LightVote protect my secret ballot?',
-    'help.a3': 'LightVote uses cryptographic nullifier hashes. When you submit your vote, the blockchain verifies you are an eligible voter without storing your name, email, or voter ID next to the candidate choice.',
+    'help.a3': 'LightVote uses a cryptographic nullifier to reject repeat votes. The blockchain does not store your name or voter ID, but your transaction publicly includes the candidate ID and sender wallet, so this prototype does not provide ballot secrecy.',
     'help.q4': 'How do I verify that my vote was counted?',
     'help.a4': 'After voting, you receive a cryptographic receipt containing a transaction hash and block number. Use the "Verify Receipt" page to confirm your vote exists on the blockchain.',
     'help.toll_free': 'Toll-Free Helpline',

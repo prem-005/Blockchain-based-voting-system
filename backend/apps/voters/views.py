@@ -1,7 +1,8 @@
 from django.utils import timezone
 from django.conf import settings
 from django.core.mail import send_mail
-from django.views.decorators.csrf import csrf_exempt
+from django.db import IntegrityError
+from django.views.decorators.csrf import csrf_protect
 from django.utils.decorators import method_decorator
 import logging
 from rest_framework import generics, status
@@ -21,7 +22,7 @@ from .serializers import (
 from apps.authentication.models import User, OTPToken
 from apps.authentication.email_service import send_email_async
 from apps.authentication.permissions import IsElectionAdministrator
-from apps.elections.models import Election
+from apps.elections.models import Constituency, Election
 from apps.parties_candidates.models import Candidate
 from apps.receipts.blockchain import get_web3, load_contract_config
 from apps.receipts.models import VoteReceipt
@@ -29,7 +30,7 @@ from .eligibility import derive_nullifier, build_merkle_tree
 
 logger = logging.getLogger(__name__)
 
-@method_decorator(csrf_exempt, name='dispatch')
+@method_decorator(csrf_protect, name='dispatch')
 class VoterRegistrationView(generics.CreateAPIView):
     permission_classes = [AllowAny]
     serializer_class = VoterRegistrationSerializer
@@ -37,7 +38,13 @@ class VoterRegistrationView(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        voter = serializer.save()
+        try:
+            voter = serializer.save()
+        except IntegrityError:
+            return Response(
+                {'error': 'Registration conflicts with an existing email, voter ID, or mobile number.'},
+                status=status.HTTP_409_CONFLICT,
+            )
 
         # Generate initial OTP for email verification
         token = OTPToken.generate_otp(user=voter.user, purpose='REGISTRATION', validity_minutes=10)
@@ -225,11 +232,25 @@ class EligibilityRootsView(APIView):
                 return Response({'error': 'No district is assigned to this administrator.'}, status=status.HTTP_403_FORBIDDEN)
             voters = voters.filter(district_id=request.user.assigned_district_id)
 
+        constituencies = Constituency.objects.filter(district__state=election.state)
+        if request.user.role == User.Role.DISTRICT_ADMIN:
+            constituencies = constituencies.filter(district_id=request.user.assigned_district_id)
+
+        leaves_by_constituency = {}
+        for constituency_id, user_id in voters.values_list('constituency_id', 'user_id'):
+            leaves_by_constituency.setdefault(constituency_id, []).append(
+                derive_nullifier(user_id, election.pk)
+            )
+
         roots = []
-        for constituency_id in voters.values_list('constituency_id', flat=True).distinct():
-            eligible = voters.filter(constituency_id=constituency_id)
-            leaves = [derive_nullifier(voter.user_id, election.pk) for voter in eligible]
-            root, _ = build_merkle_tree(leaves)
+        for constituency_id in constituencies.order_by('id').values_list('id', flat=True):
+            leaves = leaves_by_constituency.get(constituency_id, [])
+            if leaves:
+                root, _ = build_merkle_tree(leaves)
+            else:
+                # Replace any stale root with a nonzero root containing no
+                # voter commitment, invalidating proofs for removed voters.
+                root = Web3.keccak(text=f'lightvote-empty-eligibility:v1:{election.pk}:{constituency_id}')
             roots.append({
                 'constituency_id': constituency_id,
                 'merkle_root': Web3.to_hex(root),

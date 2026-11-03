@@ -1,7 +1,7 @@
 import logging
 from datetime import timedelta
 from django.utils import timezone
-from django.views.decorators.csrf import ensure_csrf_cookie, csrf_protect, csrf_exempt
+from django.views.decorators.csrf import ensure_csrf_cookie, get_token, csrf_protect
 from django.utils.decorators import method_decorator
 from django.core.mail import send_mail
 from django.conf import settings
@@ -26,9 +26,9 @@ class CsrfCookieView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        return Response({'csrf_cookie_set': True})
+        return Response({'csrf_cookie_set': True, 'csrf_token': get_token(request)})
 
-@method_decorator(csrf_exempt, name='dispatch')
+@method_decorator(csrf_protect, name='dispatch')
 class SendOTPView(APIView):
     permission_classes = [AllowAny]
 
@@ -73,7 +73,7 @@ class SendOTPView(APIView):
             'cooldown_seconds': 60
         }, status=status.HTTP_200_OK)
 
-@method_decorator(csrf_exempt, name='dispatch')
+@method_decorator(csrf_protect, name='dispatch')
 class VerifyOTPView(APIView):
     permission_classes = [AllowAny]
 
@@ -126,10 +126,11 @@ class VerifyOTPView(APIView):
         return Response({
             'message': 'Authentication successful.',
             'user': UserSerializer(user).data,
-            'voter_profile': voter_profile
+            'voter_profile': voter_profile,
+            'csrf_token': get_token(request),
         }, status=status.HTTP_200_OK)
 
-@method_decorator(csrf_exempt, name='dispatch')
+@method_decorator(csrf_protect, name='dispatch')
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -153,7 +154,8 @@ class LoginView(APIView):
                 login(request, authenticated_user)
                 return Response({
                     'message': 'Login successful.',
-                    'user': UserSerializer(authenticated_user).data
+                    'user': UserSerializer(authenticated_user).data,
+                    'csrf_token': get_token(request),
                 })
             else:
                 return Response({'error': 'Invalid email or password.'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -170,7 +172,6 @@ class LoginView(APIView):
             'message': 'OTP dispatched to email. Enter OTP to complete login.'
         })
 
-@method_decorator(csrf_exempt, name='dispatch')
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -207,7 +208,7 @@ class MeView(APIView):
 
 
 class TestEmailView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsCentralAdministrator]
 
     def get(self, request):
         to_email = request.query_params.get('email', '').strip()

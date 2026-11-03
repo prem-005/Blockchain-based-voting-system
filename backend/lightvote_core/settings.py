@@ -16,6 +16,8 @@ if not SECRET_KEY:
     if not DEBUG:
         raise RuntimeError('DJANGO_SECRET_KEY must be configured when DEBUG is disabled.')
     SECRET_KEY = 'dev-only-lightvote-key-change-before-deployment'
+if not DEBUG and (len(SECRET_KEY) < 32 or 'replace-with' in SECRET_KEY.lower() or SECRET_KEY.startswith('dev-only-')):
+    raise RuntimeError('DJANGO_SECRET_KEY must be a private random value of at least 32 characters in production.')
 
 ALLOWED_HOSTS = [host.strip() for host in os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if host.strip()]
 
@@ -136,7 +138,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'apps.authentication.auth.CsrfExemptSessionAuthentication',
+        'apps.authentication.auth.CsrfProtectedSessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',
@@ -152,9 +154,6 @@ CORS_ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv(
     'CORS_ALLOWED_ORIGINS',
     'http://localhost:5173,http://127.0.0.1:5173'
 ).split(',') if origin.strip()]
-CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^https://.*\.vercel\.app$",
-]
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
 
@@ -162,16 +161,14 @@ CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in os.getenv(
     'CSRF_TRUSTED_ORIGINS',
     'http://localhost:5173,http://127.0.0.1:5173'
-).split(',') if origin.strip()] + [
-    'https://*.vercel.app',
-    'https://*.onrender.com',
-]
+).split(',') if origin.strip()]
 
 # Cross-origin cookie settings — required for Vercel (frontend) + Render (backend) on HTTPS
-SESSION_COOKIE_SAMESITE = 'None'
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SAMESITE = 'None'
-CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'
+CSRF_COOKIE_SECURE = not DEBUG
+CSRF_FAILURE_VIEW = 'apps.authentication.auth.csrf_failure'
 
 # Email OTP Configuration
 EMAIL_BACKEND_TYPE = os.getenv('EMAIL_BACKEND_TYPE', 'console')
@@ -189,6 +186,17 @@ else:
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'LightVote Election Commission <noreply@lightvote.org>')
 
 # Web3 / Blockchain RPC
-HARDHAT_RPC_URL = os.getenv('HARDHAT_RPC_URL', 'http://127.0.0.1:8545')
-CHAIN_ID = int(os.getenv('CHAIN_ID', 31337))
-BALLOT_NULLIFIER_SECRET = os.getenv('BALLOT_NULLIFIER_SECRET', SECRET_KEY)
+HARDHAT_RPC_URL = os.getenv('HARDHAT_RPC_URL', 'http://127.0.0.1:8545' if DEBUG else '')
+CHAIN_ID_VALUE = os.getenv('CHAIN_ID')
+if not DEBUG and not HARDHAT_RPC_URL:
+    raise RuntimeError('HARDHAT_RPC_URL must be configured for the production blockchain.')
+if not DEBUG and not CHAIN_ID_VALUE:
+    raise RuntimeError('CHAIN_ID must explicitly match the production contract deployment.')
+CHAIN_ID = int(CHAIN_ID_VALUE or 31337)
+BALLOT_NULLIFIER_SECRET = os.getenv('BALLOT_NULLIFIER_SECRET', SECRET_KEY if DEBUG else '')
+if not DEBUG and (
+    len(BALLOT_NULLIFIER_SECRET) < 32 or
+    'replace-with' in BALLOT_NULLIFIER_SECRET.lower() or
+    BALLOT_NULLIFIER_SECRET == SECRET_KEY
+):
+    raise RuntimeError('BALLOT_NULLIFIER_SECRET must be a separate private random value of at least 32 characters in production.')

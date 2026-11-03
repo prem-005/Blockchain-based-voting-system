@@ -53,7 +53,7 @@ class Command(BaseCommand):
 
         district_objs = {}
         for d_id, name, code in districts_data:
-            d_obj, _ = District.objects.update_or_create(
+            d_obj, _ = District.objects.get_or_create(
                 id=d_id,
                 defaults={"name": name, "code": code, "state": state}
             )
@@ -197,7 +197,7 @@ class Command(BaseCommand):
         ]
 
         for c_id, name, dist_id, cat in constituencies_data:
-            Constituency.objects.update_or_create(
+            Constituency.objects.get_or_create(
                 id=c_id,
                 defaults={
                     "name": name,
