@@ -356,13 +356,33 @@ export const ElectionControlPage: React.FC = () => {
         return;
       }
 
-      const tx = await eligibility.setConstituencyMerkleRoots(
-        BigInt(electionId),
-        changedRoots.map((root: any) => BigInt(root.constituency_id)),
-        changedRoots.map((root: any) => root.merkle_root)
-      );
-      setStatusMsg(`Publishing ${changedRoots.length} eligibility roots in one transaction...`);
-      await tx.wait();
+      const constituencyIds = changedRoots.map((root: any) => BigInt(root.constituency_id));
+      const merkleRoots = changedRoots.map((root: any) => root.merkle_root);
+      try {
+        setStatusMsg(`Publishing ${changedRoots.length} eligibility roots in one transaction...`);
+        const tx = await eligibility.setConstituencyMerkleRoots(
+          BigInt(electionId),
+          constituencyIds,
+          merkleRoots
+        );
+        await tx.wait();
+      } catch (batchError: any) {
+        const detail = `${batchError?.shortMessage || ''} ${batchError?.message || ''}`;
+        const missingBatchMethod = /no data present|missing revert data|unknown function|function selector was not recognized/i.test(detail);
+        if (!missingBatchMethod) throw batchError;
+
+        // The deployed eligibility contract may predate the batch setter. Fall back
+        // to its original setter so administrators can still publish the roots.
+        for (let i = 0; i < changedRoots.length; i++) {
+          setStatusMsg(`This deployed contract needs individual root updates (${i + 1} of ${changedRoots.length})...`);
+          const tx = await eligibility.setConstituencyMerkleRoot(
+            BigInt(electionId),
+            constituencyIds[i],
+            merkleRoots[i]
+          );
+          await tx.wait();
+        }
+      }
       setStatusMsg(`Updated ${changedRoots.length} of ${roots.length} eligibility roots for election #${electionId}; unchanged roots were skipped.`);
     } catch (err: any) {
       setStatusMsg(`Eligibility root sync failed: ${friendlyError(err)}`);
