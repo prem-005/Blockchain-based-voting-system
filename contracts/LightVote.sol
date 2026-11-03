@@ -121,6 +121,10 @@ contract LightVote is AccessControl, ReentrancyGuard {
         string calldata party
     ) external onlyCandidateAdmin(districtId) returns (uint256) {
         require(electionId > 0, "Invalid election ID");
+        (,,,,,,, bool electionExists,) = electionManager.elections(electionId);
+        require(electionExists, "Election not found");
+        // Constituency IDs are the official positive IDs supplied by the
+        // election catalog (for example, ECI AC numbers), not zero-based indexes.
         require(constituencyId > 0, "Invalid constituency ID");
         require(bytes(name).length > 0, "Candidate name required");
         require(bytes(party).length > 0, "Party required");

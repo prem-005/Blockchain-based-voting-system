@@ -38,6 +38,7 @@ export const CandidateManagementPage: React.FC = () => {
   const [parties, setParties] = useState<Party[]>([]);
   const [districts, setDistricts] = useState<District[]>([]);
   const [constituencies, setConstituencies] = useState<Constituency[]>([]);
+  const [constituenciesLoading, setConstituenciesLoading] = useState(false);
   const allowedDistricts = assignedDistrictId == null ? districts : districts.filter((district) => district.id === assignedDistrictId);
 
   /* ── filters ── */
@@ -103,9 +104,16 @@ export const CandidateManagementPage: React.FC = () => {
 
   // reload constituencies when district changes in form
   useEffect(() => {
+    setConstituencies([]);
+    setFormData((current) => ({ ...current, constituency: 0 }));
     if (!formData.district) return;
+    let current = true;
+    setConstituenciesLoading(true);
     apiRequest(`/elections/constituencies/?district_id=${formData.district}`)
-      .then(d => setConstituencies(d.results || d || []));
+      .then(d => { if (current) setConstituencies(d.results || d || []); })
+      .catch((e: any) => { if (current) setError(e.message || 'Could not load constituencies for this district.'); })
+      .finally(() => { if (current) setConstituenciesLoading(false); });
+    return () => { current = false; };
   }, [formData.district]);
 
   const flash = (msg: string) => {
@@ -183,6 +191,19 @@ export const CandidateManagementPage: React.FC = () => {
     let confirmedRegistrationTx: string | null = null;
     try {
       if (modalMode === 'add') {
+        const selectedConstituency = constituencies.find((item) => item.id === Number(formData.constituency));
+        if (!Number.isSafeInteger(Number(formData.election)) || Number(formData.election) <= 0) {
+          throw new Error('Select a valid election before nominating a candidate.');
+        }
+        if (!Number.isSafeInteger(Number(formData.district)) || Number(formData.district) <= 0) {
+          throw new Error('Select a valid district before nominating a candidate.');
+        }
+        if (!Number.isSafeInteger(Number(formData.constituency)) || Number(formData.constituency) <= 0 || !selectedConstituency) {
+          throw new Error('Select a constituency from the selected district. Constituency IDs must be the official positive IDs shown in the list.');
+        }
+        if (selectedConstituency.district !== Number(formData.district)) {
+          throw new Error('The selected constituency does not belong to the selected district. Reload the constituency list and try again.');
+        }
         const expectedChainId = EXPECTED_CHAIN_ID;
         if (!account || chainId !== expectedChainId) throw new Error(`Connect an administrator wallet on chain ${expectedChainId} before registering a candidate.`);
         const candRef = ethers.keccak256(
@@ -191,6 +212,10 @@ export const CandidateManagementPage: React.FC = () => {
 
         const lightVote = getContract('LightVote', true);
         if (!lightVote) throw new Error('LightVote contract is unavailable for the connected network.');
+        const electionManager = getContract('ElectionManager');
+        if (!electionManager) throw new Error('Election manager contract is unavailable for the connected network.');
+        const chainElection = await electionManager.elections(BigInt(formData.election));
+        if (!chainElection[7]) throw new Error('This election ID is not registered on the connected blockchain. Select an election synchronized with the active contract.');
         const partyObj = parties.find(p => p.id.toString() === formData.party);
         if (!partyObj) throw new Error('Select a valid registered party.');
 
@@ -215,14 +240,26 @@ export const CandidateManagementPage: React.FC = () => {
           throw new Error(`A candidate named '${formData.name}' is already registered in this constituency.`);
         }
 
-        const tx = await lightVote.registerCandidate(
+        let tx;
+        try {
+          tx = await lightVote.registerCandidate(
           BigInt(formData.election),
           BigInt(formData.district),
           BigInt(formData.constituency),
           candRef,
           formData.name,
           partyObj.abbreviation
-        );
+          );
+        } catch (chainError: any) {
+          const reason = chainError?.reason || chainError?.shortMessage || chainError?.info?.error?.message || chainError?.message || '';
+          if (/Invalid constituency ID/i.test(reason)) {
+            throw new Error('The blockchain rejected constituency ID 0. Choose an official constituency from the selected district and try again.');
+          }
+          if (/Invalid election ID|Election not found/i.test(reason)) {
+            throw new Error('This election is not registered on the connected blockchain. Refresh elections and select a synchronized election.');
+          }
+          throw new Error(reason.replace(/^execution reverted:\s*/i, '').replace(/^"|"$/g, '') || 'The blockchain rejected this candidate nomination. Check the election, district, constituency, and administrator permissions.');
+        }
         const rec = await tx.wait();
         if (!rec || rec.status !== 1) throw new Error('Candidate registration did not confirm on-chain.');
         const registrationEvent = rec.logs
@@ -693,9 +730,11 @@ export const CandidateManagementPage: React.FC = () => {
                       <label className="block font-semibold text-slate-700 mb-1">Constituency *</label>
                       <select
                         value={formData.constituency}
-                        onChange={(e) => setFormData({ ...formData, constituency: parseInt(e.target.value) })}
+                        disabled={constituenciesLoading || constituencies.length === 0}
+                        onChange={(e) => setFormData({ ...formData, constituency: e.target.value ? Number(e.target.value) : 0 })}
                         className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500"
                       >
+                        <option value={0}>{constituenciesLoading ? 'Loading constituencies…' : 'Select a constituency'}</option>
                         {constituencies.map((con) => (
                           <option key={con.id} value={con.id}>AC-{con.id}: {con.name}</option>
                         ))}
