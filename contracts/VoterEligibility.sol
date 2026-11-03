@@ -70,6 +70,24 @@ contract VoterEligibility is AccessControl {
     }
 
     /**
+     * @notice Set or update multiple constituency roots for one election in a single transaction.
+     */
+    function setConstituencyMerkleRoots(
+        uint256 electionId,
+        uint256[] calldata constituencyIds,
+        bytes32[] calldata merkleRoots
+    ) external onlyAuthorizedAdmin {
+        require(constituencyIds.length == merkleRoots.length, "Array length mismatch");
+        require(constituencyIds.length > 0, "No roots provided");
+
+        for (uint256 i = 0; i < constituencyIds.length; i++) {
+            require(merkleRoots[i] != bytes32(0), "Invalid Merkle root");
+            constituencyMerkleRoots[electionId][constituencyIds[i]] = merkleRoots[i];
+            emit MerkleRootUpdated(electionId, constituencyIds[i], merkleRoots[i]);
+        }
+    }
+
+    /**
      * @notice Verifies whether a nullifier is unused in an election.
      */
     function isNullifierUsed(uint256 electionId, bytes32 nullifierHash) external view returns (bool) {

@@ -343,21 +343,27 @@ export const ElectionControlPage: React.FC = () => {
       const roots = data.roots || [];
       if (!roots.length) throw new Error('There are no constituencies in the election state catalog to synchronize.');
 
-      let updatedCount = 0;
+      const changedRoots: typeof roots = [];
       for (const root of roots) {
         const electionKey = BigInt(electionId);
         const constituencyKey = BigInt(root.constituency_id);
         const currentRoot = await eligibility.constituencyMerkleRoots(electionKey, constituencyKey);
         if (String(currentRoot).toLowerCase() === String(root.merkle_root).toLowerCase()) continue;
-        const tx = await eligibility.setConstituencyMerkleRoot(
-          electionKey,
-          constituencyKey,
-          root.merkle_root
-        );
-        await tx.wait();
-        updatedCount += 1;
+        changedRoots.push(root);
       }
-      setStatusMsg(`Updated ${updatedCount} of ${roots.length} eligibility roots for election #${electionId}; unchanged roots were skipped.`);
+      if (changedRoots.length === 0) {
+        setStatusMsg(`All ${roots.length} eligibility roots for election #${electionId} are already up to date.`);
+        return;
+      }
+
+      const tx = await eligibility.setConstituencyMerkleRoots(
+        BigInt(electionId),
+        changedRoots.map((root: any) => BigInt(root.constituency_id)),
+        changedRoots.map((root: any) => root.merkle_root)
+      );
+      setStatusMsg(`Publishing ${changedRoots.length} eligibility roots in one transaction...`);
+      await tx.wait();
+      setStatusMsg(`Updated ${changedRoots.length} of ${roots.length} eligibility roots for election #${electionId}; unchanged roots were skipped.`);
     } catch (err: any) {
       setStatusMsg(`Eligibility root sync failed: ${friendlyError(err)}`);
     } finally {
