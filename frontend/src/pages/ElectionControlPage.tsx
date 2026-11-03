@@ -338,7 +338,20 @@ export const ElectionControlPage: React.FC = () => {
     try {
       const eligibility = getContract('VoterEligibility', true);
       if (!eligibility || !account) throw new Error('Connect the Central Admin wallet on the configured chain.');
-      await ensureChainAdmin(getContract('ElectionManager', true));
+      const manager = getContract('ElectionManager', true);
+      if (!manager) throw new Error('ElectionManager is unavailable on the configured network.');
+      await ensureChainAdmin(manager);
+
+      const eligibilityManagerAddress = String(await eligibility.electionManager()).toLowerCase();
+      const configuredManagerAddress = String(await manager.getAddress()).toLowerCase();
+      if (eligibilityManagerAddress !== configuredManagerAddress) {
+        throw new Error('The configured VoterEligibility and ElectionManager contracts do not belong to the same deployment. Update the frontend contract addresses before syncing roots.');
+      }
+      const walletBalance = await eligibility.runner.provider.getBalance(account);
+      if (walletBalance === 0n) {
+        throw new Error('This wallet has no Sepolia ETH to pay transaction fees. Add Sepolia test ETH, then retry.');
+      }
+
       const data = await apiRequest(`/voters/admin/eligibility-roots/?election_id=${electionId}`);
       const roots = data.roots || [];
       if (!roots.length) throw new Error('There are no constituencies in the election state catalog to synchronize.');
@@ -358,7 +371,10 @@ export const ElectionControlPage: React.FC = () => {
 
       const constituencyIds = changedRoots.map((root: any) => BigInt(root.constituency_id));
       const merkleRoots = changedRoots.map((root: any) => root.merkle_root);
-      try {
+      const deployedCode = await eligibility.runner.provider.getCode(await eligibility.getAddress());
+      const batchSelector = eligibility.interface.getFunction('setConstituencyMerkleRoots')!.selector.slice(2).toLowerCase();
+      const supportsBatch = deployedCode.toLowerCase().includes(batchSelector);
+      if (supportsBatch) {
         setStatusMsg(`Publishing ${changedRoots.length} eligibility roots in one transaction...`);
         const tx = await eligibility.setConstituencyMerkleRoots(
           BigInt(electionId),
@@ -366,21 +382,25 @@ export const ElectionControlPage: React.FC = () => {
           merkleRoots
         );
         await tx.wait();
-      } catch (batchError: any) {
-        const detail = `${batchError?.shortMessage || ''} ${batchError?.message || ''}`;
-        const missingBatchMethod = /no data present|missing revert data|unknown function|function selector was not recognized/i.test(detail);
-        if (!missingBatchMethod) throw batchError;
-
-        // The deployed eligibility contract may predate the batch setter. Fall back
-        // to its original setter so administrators can still publish the roots.
+      } else {
+        // The deployed eligibility contract predates the batch setter. Use its
+        // original method so administrators can publish roots without redeploying.
         for (let i = 0; i < changedRoots.length; i++) {
           setStatusMsg(`This deployed contract needs individual root updates (${i + 1} of ${changedRoots.length})...`);
-          const tx = await eligibility.setConstituencyMerkleRoot(
-            BigInt(electionId),
-            constituencyIds[i],
-            merkleRoots[i]
-          );
-          await tx.wait();
+          try {
+            const tx = await eligibility.setConstituencyMerkleRoot(
+              BigInt(electionId),
+              constituencyIds[i],
+              merkleRoots[i]
+            );
+            await tx.wait();
+          } catch (legacyError: any) {
+            const detail = `${legacyError?.shortMessage || ''} ${legacyError?.reason || ''} ${legacyError?.message || ''}`;
+            if (/missing revert data|no data present/i.test(detail)) {
+              throw new Error('The deployed VoterEligibility contract rejected the root update without a reason. Confirm MetaMask is on Sepolia, this wallet is authorized on the contract’s linked ElectionManager, and it has Sepolia ETH for gas.');
+            }
+            throw legacyError;
+          }
         }
       }
       setStatusMsg(`Updated ${changedRoots.length} of ${roots.length} eligibility roots for election #${electionId}; unchanged roots were skipped.`);
